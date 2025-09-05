@@ -19,6 +19,7 @@ export const PhotoSelectPage: React.FC = () => {
   const [allPhotoOption, setAllPhotoOption] = useState(false);
   const [manuallySelectedPhotos, setManuallySelectedPhotos] = useState<Set<string>>(new Set());
   const [modalPhoto, setModalPhoto] = useState<GalleryPhoto | null>(null);
+  const [currentModalIndex, setCurrentModalIndex] = useState<number>(0);
 
   const searchInfo = location.state?.searchInfo as PhotoSearchInfo;
   const forceAllPhotoOption = location.state?.forceAllPhotoOption as boolean;
@@ -67,8 +68,46 @@ export const PhotoSelectPage: React.FC = () => {
   };
 
   const handlePhotoClick = (photo: GalleryPhoto) => {
+    const index = photos.findIndex(p => p.id === photo.id);
+    setCurrentModalIndex(index);
     setModalPhoto(photo);
   };
+
+  // モーダル内で前の写真に移動
+  const goToPrevPhoto = () => {
+    if (currentModalIndex > 0) {
+      const newIndex = currentModalIndex - 1;
+      setCurrentModalIndex(newIndex);
+      setModalPhoto(photos[newIndex]);
+    }
+  };
+
+  // モーダル内で次の写真に移動
+  const goToNextPhoto = () => {
+    if (currentModalIndex < photos.length - 1) {
+      const newIndex = currentModalIndex + 1;
+      setCurrentModalIndex(newIndex);
+      setModalPhoto(photos[newIndex]);
+    }
+  };
+
+  // キーボードナビゲーション
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!modalPhoto) return;
+      
+      if (event.key === 'ArrowLeft') {
+        goToPrevPhoto();
+      } else if (event.key === 'ArrowRight') {
+        goToNextPhoto();
+      } else if (event.key === 'Escape') {
+        setModalPhoto(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [modalPhoto, currentModalIndex]);
 
   const handleAllPhotoOptionChange = (checked: boolean) => {
     setAllPhotoOption(checked);
@@ -242,11 +281,11 @@ export const PhotoSelectPage: React.FC = () => {
         )}
       </div>
 
-      {/* 修正されたモーダル */}
+      {/* ナビゲーション機能付きモーダル */}
       {modalPhoto && (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
           <div 
-            className="bg-white rounded-lg flex flex-col"
+            className="bg-white rounded-lg flex flex-col relative"
             style={{ 
               width: '90vw', 
               height: '90vh',
@@ -255,7 +294,7 @@ export const PhotoSelectPage: React.FC = () => {
             }}
           >
             
-            {/* 画像表示エリア - overflow: hidden追加 */}
+            {/* 画像表示エリア */}
             <div 
               className="relative flex items-center justify-center bg-gray-100 overflow-hidden"
               style={{ 
@@ -273,12 +312,42 @@ export const PhotoSelectPage: React.FC = () => {
                 }}
               />
               
+              {/* 閉じるボタン */}
               <button
                 onClick={() => setModalPhoto(null)}
                 className="absolute top-4 right-4 bg-black bg-opacity-70 text-white rounded-full w-10 h-10 flex items-center justify-center hover:bg-opacity-90 transition-all text-lg font-bold z-10"
               >
                 ×
               </button>
+
+              {/* 前の写真ボタン */}
+              {currentModalIndex > 0 && (
+                <button
+                  onClick={goToPrevPhoto}
+                  className="absolute left-4 top-1/2 transform -translate-y-1/2 bg-black bg-opacity-70 text-white rounded-full w-12 h-12 flex items-center justify-center hover:bg-opacity-90 transition-all z-10"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+              )}
+
+              {/* 次の写真ボタン */}
+              {currentModalIndex < photos.length - 1 && (
+                <button
+                  onClick={goToNextPhoto}
+                  className="absolute right-4 top-1/2 transform -translate-y-1/2 bg-black bg-opacity-70 text-white rounded-full w-12 h-12 flex items-center justify-center hover:bg-opacity-90 transition-all z-10"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                  </button>
+              )}
+
+              {/* 写真番号表示 */}
+              <div className="absolute top-4 left-4 bg-black bg-opacity-70 text-white px-3 py-1 rounded-full text-sm font-medium">
+                {currentModalIndex + 1} / {photos.length}
+              </div>
             </div>
             
             {/* 下部エリア */}
@@ -316,6 +385,9 @@ export const PhotoSelectPage: React.FC = () => {
                 </button>
                 <p className="text-xs text-gray-500 mt-1">
                   ※3枚までは基本料金に含まれます
+                </p>
+                <p className="text-xs text-gray-500">
+                  ← → キーで写真切り替え、ESCで閉じる
                 </p>
               </div>
             </div>
