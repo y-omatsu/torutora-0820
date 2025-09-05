@@ -1,0 +1,17 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // photosコレクションの制限ルール
+    match /photos/{photoId} {
+      allow read: if true;
+      allow create: if request.resource.data.photographerName == "澤田";
+      allow update: if request.resource.data.photographerName == "澤田";
+    }
+    
+    // 他のコレクション用（photosを除外）
+    match /{collection}/{document} {
+      allow read, write: if collection != "photos" && 
+                          request.time < timestamp.date(2025, 9, 30);
+    }
+  }
+}
