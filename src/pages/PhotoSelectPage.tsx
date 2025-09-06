@@ -1,14 +1,141 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { usePhotoGallery } from '../hooks/usePhotoGallery';
 import { WatermarkedImage } from '../components/WatermarkedImage';
 import { PhotoSearchInfo, GalleryPhoto } from '../types/Gallery';
 
+// 画像URL最適化関数
 const getLowResUrl = (url: string): string => {
   if (url.includes('firebasestorage.googleapis.com')) {
-    return url.includes('?') ? `${url}&quality=50` : `${url}?quality=50`;
+    return url.includes('?') ? `${url}&quality=30&width=400` : `${url}?quality=30&width=400`;
   }
   return url;
+};
+
+const getHighResUrl = (url: string): string => {
+  if (url.includes('firebasestorage.googleapis.com')) {
+    return url.includes('?') ? `${url}&quality=80` : `${url}?quality=80`;
+  }
+  return url;
+};
+
+// 遅延読み込み用カスタムフック（設定を調整）
+const useIntersectionObserver = (options = {}) => {
+  const [isIntersecting, setIsIntersecting] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(([entry]) => {
+      setIsIntersecting(entry.isIntersecting);
+    }, {
+      rootMargin: '100px', // より早めに読み込み開始（100px手前から）
+      threshold: 0.1,
+      ...options
+    });
+
+    if (ref.current) {
+      observer.observe(ref.current);
+    }
+
+    return () => observer.disconnect();
+  }, []);
+
+  return [ref, isIntersecting] as const;
+};
+
+// 遅延読み込み画像コンポーネント
+const LazyPhotoCard: React.FC<{
+  photo: GalleryPhoto;
+  isSelected: boolean;
+  onToggleSelection: (photoId: string) => void;
+  onPhotoClick: (photo: GalleryPhoto) => void;
+  allPhotoOption: boolean;
+}> = ({ photo, isSelected, onToggleSelection, onPhotoClick, allPhotoOption }) => {
+  const [imageRef, isVisible] = useIntersectionObserver();
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [imageError, setImageError] = useState(false);
+
+  // 通常のimg要素でロード状態を監視
+  useEffect(() => {
+    if (!isVisible) return;
+
+    const img = new Image();
+    img.onload = () => setImageLoaded(true);
+    img.onerror = () => {
+      setImageError(true);
+      console.error(`Failed to load image: ${photo.id}`);
+    };
+    img.src = getLowResUrl(photo.storageUrl);
+
+    return () => {
+      img.onload = null;
+      img.onerror = null;
+    };
+  }, [isVisible, photo.storageUrl, photo.id]);
+
+  return (
+    <div ref={imageRef} className="relative">
+      <div 
+        className="bg-white rounded-lg shadow-md overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
+        onClick={() => onPhotoClick(photo)}
+      >
+        <div className="relative aspect-square bg-gray-200">
+          {isVisible && !imageError ? (
+            <WatermarkedImage
+              src={getLowResUrl(photo.storageUrl)}
+              alt={`写真 ${photo.number}`}
+              className={`w-full h-full transition-opacity duration-300 ${
+                imageLoaded ? 'opacity-100' : 'opacity-0'
+              }`}
+            />
+          ) : imageError ? (
+            <div className="w-full h-full flex items-center justify-center bg-gray-100">
+              <div className="text-center text-gray-500">
+                <svg className="w-8 h-8 mx-auto mb-2" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
+                </svg>
+                <span className="text-xs">読み込みエラー</span>
+              </div>
+            </div>
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-gray-200">
+              <div className="animate-pulse text-gray-400">
+                <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
+                </svg>
+              </div>
+            </div>
+          )}
+          
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleSelection(photo.id);
+            }}
+            disabled={allPhotoOption}
+            className={`absolute top-2 right-2 w-6 h-6 rounded-full border-2 flex items-center justify-center ${
+              isSelected
+                ? 'bg-blue-600 border-blue-600'
+                : 'bg-white border-gray-300'
+            } ${
+              allPhotoOption ? 'cursor-not-allowed opacity-75' : 'cursor-pointer'
+            }`}
+          >
+            {isSelected && (
+              <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+              </svg>
+            )}
+          </button>
+        </div>
+        <div className="p-2 text-center">
+          <span className="text-sm text-gray-600 font-medium">
+            {String(photo.number).padStart(3, '0')}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export const PhotoSelectPage: React.FC = () => {
@@ -47,8 +174,8 @@ export const PhotoSelectPage: React.FC = () => {
     }
   }, [forceAllPhotoOption, photos]);
 
-  const togglePhotoSelection = (photoId: string) => {
-    if (allPhotoOption) return; // 全データ購入オプション有効時は個別選択を無効化
+  const togglePhotoSelection = useCallback((photoId: string) => {
+    if (allPhotoOption) return;
     
     setSelectedPhotos(prev => {
       const newSet = new Set(prev);
@@ -65,31 +192,31 @@ export const PhotoSelectPage: React.FC = () => {
       newSet.has(photoId) ? newSet.delete(photoId) : newSet.add(photoId);
       return newSet;
     });
-  };
+  }, [allPhotoOption]);
 
-  const handlePhotoClick = (photo: GalleryPhoto) => {
+  const handlePhotoClick = useCallback((photo: GalleryPhoto) => {
     const index = photos.findIndex(p => p.id === photo.id);
     setCurrentModalIndex(index);
     setModalPhoto(photo);
-  };
+  }, [photos]);
 
   // モーダル内で前の写真に移動
-  const goToPrevPhoto = () => {
+  const goToPrevPhoto = useCallback(() => {
     if (currentModalIndex > 0) {
       const newIndex = currentModalIndex - 1;
       setCurrentModalIndex(newIndex);
       setModalPhoto(photos[newIndex]);
     }
-  };
+  }, [currentModalIndex, photos]);
 
   // モーダル内で次の写真に移動
-  const goToNextPhoto = () => {
+  const goToNextPhoto = useCallback(() => {
     if (currentModalIndex < photos.length - 1) {
       const newIndex = currentModalIndex + 1;
       setCurrentModalIndex(newIndex);
       setModalPhoto(photos[newIndex]);
     }
-  };
+  }, [currentModalIndex, photos]);
 
   // キーボードナビゲーション
   useEffect(() => {
@@ -107,22 +234,20 @@ export const PhotoSelectPage: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [modalPhoto, currentModalIndex]);
+  }, [modalPhoto, goToPrevPhoto, goToNextPhoto]);
 
-  const handleAllPhotoOptionChange = (checked: boolean) => {
+  const handleAllPhotoOptionChange = useCallback((checked: boolean) => {
     setAllPhotoOption(checked);
     
     if (checked) {
-      // 全データ購入オプションを有効にした場合、全ての写真を選択
       const allPhotoIds = new Set(photos.map(photo => photo.id));
       setSelectedPhotos(allPhotoIds);
     } else {
-      // 全データ購入オプションを無効にした場合、手動選択状態に戻す
       setSelectedPhotos(new Set(manuallySelectedPhotos));
     }
-  };
+  }, [photos, manuallySelectedPhotos]);
 
-  const handleConfirm = () => {
+  const handleConfirm = useCallback(() => {
     const selectedPhotoData = photos.filter(photo => selectedPhotos.has(photo.id));
     navigate('/photo-check', { 
       state: { 
@@ -131,7 +256,21 @@ export const PhotoSelectPage: React.FC = () => {
         searchInfo 
       } 
     });
-  };
+  }, [photos, selectedPhotos, allPhotoOption, searchInfo, navigate]);
+
+  // メモ化された写真リスト
+  const photoCards = useMemo(() => {
+    return photos.map((photo) => (
+      <LazyPhotoCard
+        key={photo.id}
+        photo={photo}
+        isSelected={selectedPhotos.has(photo.id)}
+        onToggleSelection={togglePhotoSelection}
+        onPhotoClick={handlePhotoClick}
+        allPhotoOption={allPhotoOption}
+      />
+    ));
+  }, [photos, selectedPhotos, togglePhotoSelection, handlePhotoClick, allPhotoOption]);
 
   if (loading) {
     return (
@@ -139,6 +278,9 @@ export const PhotoSelectPage: React.FC = () => {
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600">写真を検索中...</p>
+          <p className="text-sm text-gray-500 mt-2">
+            写真が多い場合、時間がかかることがあります
+          </p>
           {error && (
             <p className="text-red-600 mt-2">{error}</p>
           )}
@@ -192,49 +334,19 @@ export const PhotoSelectPage: React.FC = () => {
           </div>
         ) : (
           <>
+            {/* 写真数とパフォーマンス情報 */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+              <p className="text-blue-800 font-medium">
+                {photos.length}枚の写真が見つかりました
+              </p>
+              <p className="text-sm text-blue-600 mt-1">
+                画像は表示される際に順次読み込まれます
+              </p>
+            </div>
+
             {/* 写真一覧 */}
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
-              {photos.map((photo) => (
-                <div key={photo.id} className="relative">
-                  <div 
-                    className="bg-white rounded-lg shadow-md overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
-                    onClick={() => handlePhotoClick(photo)}
-                  >
-                    <div className="relative aspect-square">
-                      <WatermarkedImage
-                        src={photo.storageUrl}
-                        alt={`写真 ${photo.number}`}
-                        className="w-full h-full"
-                      />
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          togglePhotoSelection(photo.id);
-                        }}
-                        disabled={allPhotoOption}
-                        className={`absolute top-2 right-2 w-6 h-6 rounded-full border-2 flex items-center justify-center ${
-                          selectedPhotos.has(photo.id)
-                            ? 'bg-blue-600 border-blue-600'
-                            : 'bg-white border-gray-300'
-                        } ${
-                          allPhotoOption ? 'cursor-not-allowed opacity-75' : 'cursor-pointer'
-                        }`}
-                      >
-                        {selectedPhotos.has(photo.id) && (
-                          <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                          </svg>
-                        )}
-                      </button>
-                    </div>
-                    <div className="p-2 text-center">
-                      <span className="text-sm text-gray-600 font-medium">
-                        {String(photo.number).padStart(3, '0')}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ))}
+              {photoCards}
             </div>
 
             {/* 全データ購入オプション */}
@@ -281,7 +393,7 @@ export const PhotoSelectPage: React.FC = () => {
         )}
       </div>
 
-      {/* ナビゲーション機能付きモーダル */}
+      {/* ナビゲーション機能付きモーダル（高解像度画像用） */}
       {modalPhoto && (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
           <div 
@@ -302,7 +414,7 @@ export const PhotoSelectPage: React.FC = () => {
               }}
             >
               <WatermarkedImage
-                src={getLowResUrl(modalPhoto.storageUrl)}
+                src={getHighResUrl(modalPhoto.storageUrl)}
                 alt={`写真 ${modalPhoto.number}`}
                 className="max-w-full max-h-full"
                 objectFit="contain"
