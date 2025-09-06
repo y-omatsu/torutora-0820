@@ -43,7 +43,7 @@ const useIntersectionObserver = (options = {}) => {
   return [ref, isIntersecting] as const;
 };
 
-// 遅延読み込み画像コンポーネント
+// 遅延読み込み画像コンポーネント（改善版）
 const LazyPhotoCard: React.FC<{
   photo: GalleryPhoto;
   isSelected: boolean;
@@ -54,11 +54,39 @@ const LazyPhotoCard: React.FC<{
   const [imageRef, isVisible] = useIntersectionObserver();
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
+  const [imageStartedLoading, setImageStartedLoading] = useState(false);
 
-  // 通常のimg要素でロード状態を監視
+  // 一覧用の軽量な画像コンポーネント（ウォーターマークなし）
+  const SimpleThumbnail: React.FC<{ src: string; alt: string; onLoad: () => void; onError: () => void }> = ({ 
+    src, 
+    alt, 
+    onLoad, 
+    onError 
+  }) => {
+    return (
+      <img
+        src={src}
+        alt={alt}
+        className="w-full h-full object-cover"
+        onLoad={onLoad}
+        onError={onError}
+        loading="lazy"
+        style={{
+          // 軽量なウォーターマーク風の効果をCSSで
+          filter: 'contrast(0.9) brightness(0.95)',
+          position: 'relative'
+        }}
+      />
+    );
+  };
+
+  // 画像の読み込み処理
   useEffect(() => {
     if (!isVisible) return;
 
+    setImageStartedLoading(true);
+    
+    // プリロード用の画像オブジェクト（表示はSimpleThumbnailで行う）
     const img = new Image();
     img.onload = () => setImageLoaded(true);
     img.onerror = () => {
@@ -80,29 +108,69 @@ const LazyPhotoCard: React.FC<{
         onClick={() => onPhotoClick(photo)}
       >
         <div className="relative aspect-square bg-gray-200">
-          {isVisible && !imageError ? (
-            <WatermarkedImage
-              src={getLowResUrl(photo.storageUrl)}
-              alt={`写真 ${photo.number}`}
-              className={`w-full h-full transition-opacity duration-300 ${
-                imageLoaded ? 'opacity-100' : 'opacity-0'
-              }`}
-            />
-          ) : imageError ? (
+          {!isVisible ? (
+            // まだ表示範囲に入っていない
             <div className="w-full h-full flex items-center justify-center bg-gray-100">
-              <div className="text-center text-gray-500">
+              <div className="text-center text-gray-400">
+                <svg className="w-8 h-8 mx-auto mb-2" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
+                </svg>
+                <span className="text-xs">画像を準備中</span>
+              </div>
+            </div>
+          ) : imageError ? (
+            // エラー状態
+            <div className="w-full h-full flex items-center justify-center bg-gray-100">
+              <div className="text-center text-red-400">
                 <svg className="w-8 h-8 mx-auto mb-2" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
                 </svg>
                 <span className="text-xs">読み込みエラー</span>
               </div>
             </div>
+          ) : imageStartedLoading && !imageLoaded ? (
+            // 読み込み中状態（改善されたローディング表示）
+            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-200 to-gray-300">
+              <div className="text-center text-gray-500">
+                {/* スピナーアニメーション */}
+                <div className="relative mx-auto mb-2">
+                  <div className="w-8 h-8 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin"></div>
+                </div>
+                <span className="text-xs font-medium">読み込み中...</span>
+                {/* 進行バーっぽい表現 */}
+                <div className="w-16 h-1 bg-gray-300 rounded-full mx-auto mt-2 overflow-hidden">
+                  <div className="h-full bg-blue-500 rounded-full animate-pulse" style={{ width: '60%' }}></div>
+                </div>
+              </div>
+            </div>
           ) : (
-            <div className="w-full h-full flex items-center justify-center bg-gray-200">
-              <div className="animate-pulse text-gray-400">
-                <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
-                </svg>
+            // 画像表示（軽量版）
+            <div className="relative w-full h-full overflow-hidden">
+              <SimpleThumbnail
+                src={getLowResUrl(photo.storageUrl)}
+                alt={`写真 ${photo.number}`}
+                onLoad={() => setImageLoaded(true)}
+                onError={() => setImageError(true)}
+              />
+              {/* 軽量なウォーターマーク表示 */}
+              <div className="absolute inset-0 pointer-events-none">
+                <div 
+                  className="absolute inset-0 opacity-20"
+                  style={{
+                    backgroundImage: `url("data:image/svg+xml,${encodeURIComponent(`
+                      <svg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 200 200'>
+                        <defs>
+                          <pattern id='watermark' x='0' y='0' width='100' height='100' patternUnits='userSpaceOnUse'>
+                            <text x='50' y='50' font-family='Arial' font-size='12' font-weight='bold' 
+                                  fill='white' text-anchor='middle' transform='rotate(-30 50 50)'>ToruTora</text>
+                          </pattern>
+                        </defs>
+                        <rect width='200' height='200' fill='url(#watermark)'/>
+                      </svg>
+                    `)}")`,
+                    backgroundRepeat: 'repeat'
+                  }}
+                />
               </div>
             </div>
           )}
@@ -119,7 +187,7 @@ const LazyPhotoCard: React.FC<{
                 : 'bg-white border-gray-300'
             } ${
               allPhotoOption ? 'cursor-not-allowed opacity-75' : 'cursor-pointer'
-            }`}
+            } shadow-sm`}
           >
             {isSelected && (
               <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
