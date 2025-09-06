@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { usePhotoGallery } from '../hooks/usePhotoGallery';
 import { WatermarkedImage } from '../components/WatermarkedImage';
@@ -98,6 +98,16 @@ const LazyPhotoCard: React.FC<{
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [imageStartedLoading, setImageStartedLoading] = useState(false);
+  const [localIsSelected, setLocalIsSelected] = useState(isSelected);
+
+  // 外部の選択状態が変更されたときにローカル状態を更新
+  useEffect(() => {
+    setLocalIsSelected(isSelected);
+  }, [isSelected]);
+
+  // 画像の読み込み状態を保持（再レンダリング時も画像が消えないように）
+  const [imageSrc, setImageSrc] = useState<string | null>(null);
+  const [imageLoadError, setImageLoadError] = useState(false);
 
   // サムネイル用の軽量な画像コンポーネント（フォールバック付き）
   const ThumbnailImage: React.FC<{ src: string; alt: string; onLoad: () => void; onError: () => void }> = ({ 
@@ -146,9 +156,13 @@ const LazyPhotoCard: React.FC<{
     
     // サムネイル画像を読み込み
     const img = new Image();
-    img.onload = () => setImageLoaded(true);
+    img.onload = () => {
+      setImageLoaded(true);
+      setImageSrc(getThumbnailUrl(photo.storageUrl));
+    };
     img.onerror = () => {
       setImageError(true);
+      setImageLoadError(true);
       console.error(`Failed to load thumbnail: ${photo.id}`, getThumbnailUrl(photo.storageUrl));
     };
     
@@ -201,11 +215,46 @@ const LazyPhotoCard: React.FC<{
                 </div>
               </div>
             </div>
+          ) : imageSrc && !imageLoadError ? (
+            // サムネイル画像表示（読み込み済みの画像を保持）
+            <div className="relative w-full h-full overflow-hidden">
+              <img
+                src={imageSrc}
+                alt={`写真 ${photo.number}`}
+                className="w-full h-full object-cover"
+                loading="eager"
+                decoding="async"
+                style={{
+                  filter: 'contrast(0.9) brightness(0.95)',
+                  position: 'relative'
+                }}
+              />
+              {/* 軽量なウォーターマーク表示 */}
+              <div className="absolute inset-0 pointer-events-none">
+                <div 
+                  className="absolute inset-0 opacity-20"
+                  style={{
+                    backgroundImage: `url("data:image/svg+xml,${encodeURIComponent(`
+                      <svg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 200 200'>
+                        <defs>
+                          <pattern id='watermark' x='0' y='0' width='100' height='100' patternUnits='userSpaceOnUse'>
+                            <text x='50' y='50' font-family='Arial' font-size='12' font-weight='bold' 
+                                  fill='white' text-anchor='middle' transform='rotate(-30 50 50)'>ToruTora</text>
+                          </pattern>
+                        </defs>
+                        <rect width='200' height='200' fill='url(#watermark)'/>
+                      </svg>
+                    `)}")`,
+                    backgroundRepeat: 'repeat'
+                  }}
+                />
+              </div>
+            </div>
           ) : (
-            // サムネイル画像表示
+            // フォールバック表示（元画像を使用）
             <div className="relative w-full h-full overflow-hidden">
               <ThumbnailImage
-                src={getThumbnailUrl(photo.storageUrl)}
+                src={photo.storageUrl}
                 alt={`写真 ${photo.number}`}
                 onLoad={() => setImageLoaded(true)}
                 onError={() => setImageError(true)}
@@ -236,18 +285,19 @@ const LazyPhotoCard: React.FC<{
           <button
             onClick={(e) => {
               e.stopPropagation();
+              setLocalIsSelected(!localIsSelected);
               onToggleSelection(photo.id);
             }}
             disabled={allPhotoOption}
             className={`absolute top-2 right-2 w-6 h-6 rounded-full border-2 flex items-center justify-center ${
-              isSelected
+              localIsSelected
                 ? 'bg-blue-600 border-blue-600'
                 : 'bg-white border-gray-300'
             } ${
               allPhotoOption ? 'cursor-not-allowed opacity-75' : 'cursor-pointer'
             } shadow-sm`}
           >
-            {isSelected && (
+            {localIsSelected && (
               <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
               </svg>
@@ -481,7 +531,7 @@ export const PhotoSelectPage: React.FC = () => {
         allPhotoOption={allPhotoOption}
       />
     ));
-  }, [photos, selectedPhotos, togglePhotoSelection, handlePhotoClick, allPhotoOption]);
+  }, [photos, togglePhotoSelection, handlePhotoClick, allPhotoOption]); // selectedPhotosを依存配列から削除
 
   if (loading) {
     return (
