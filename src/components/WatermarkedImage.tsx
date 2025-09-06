@@ -6,6 +6,11 @@ interface WatermarkedImageProps {
   className?: string;
   style?: React.CSSProperties;
   objectFit?: 'cover' | 'contain';
+  // 新しいプロパティ
+  onLoadComplete?: () => void;
+  onLoadError?: () => void;
+  hideInternalLoader?: boolean;
+  externalLoading?: boolean;
 }
 
 export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({ 
@@ -13,7 +18,11 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
   alt, 
   className = '',
   style,
-  objectFit = 'cover'
+  objectFit = 'cover',
+  onLoadComplete,
+  onLoadError,
+  hideInternalLoader = false,
+  externalLoading = false
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -33,6 +42,10 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+
+    // 新しい画像ロード時はリセット
+    setIsLoading(true);
+    setError(false);
 
     const img = new Image();
     img.crossOrigin = 'anonymous';
@@ -101,10 +114,22 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
         }
 
         setIsLoading(false);
+        
+        // 外部コールバックを呼び出し
+        if (onLoadComplete) {
+          // 少し遅延してからコールバック（Canvas描画完了を確実にするため）
+          setTimeout(() => {
+            onLoadComplete();
+          }, 100);
+        }
       } catch (err) {
         console.error('Canvas drawing error:', err);
         setError(true);
         setIsLoading(false);
+        
+        if (onLoadError) {
+          onLoadError();
+        }
       }
     };
 
@@ -112,10 +137,14 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
       console.error('Image loading error');
       setError(true);
       setIsLoading(false);
+      
+      if (onLoadError) {
+        onLoadError();
+      }
     };
 
     img.src = getLowResUrl(src);
-  }, [src]);
+  }, [src, alt, onLoadComplete, onLoadError]);
 
   if (error) {
     return (
@@ -125,9 +154,12 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
     );
   }
 
+  // 内部ローダーを隠すかどうか
+  const showInternalLoader = !hideInternalLoader && isLoading && !externalLoading;
+
   return (
     <div className={`relative ${className}`} style={style}>
-      {isLoading && (
+      {showInternalLoader && (
         <div className="absolute inset-0 flex items-center justify-center bg-gray-200">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
         </div>
@@ -135,7 +167,11 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
       <canvas
         ref={canvasRef}
         className={`w-full h-full object-${objectFit}`}
-        style={{ display: isLoading ? 'none' : 'block' }}
+        style={{ 
+          display: isLoading ? 'none' : 'block',
+          opacity: externalLoading ? 0.3 : 1,
+          transition: 'opacity 0.3s ease'
+        }}
       />
     </div>
   );

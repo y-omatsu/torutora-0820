@@ -1,5 +1,13 @@
 {
   "projects": {
     "default": "nouhin-bolt-test-202508"
+  },
+  "targets": {},
+  "etags": {
+    "nouhin-bolt-test-202508": {
+      "extensionInstances": {
+        "storage-resize-images": "f295fc9c271e6eea8b423775888de1afe496b02f5917722bc4423cf2c4754ec6"
+      }
+    }
   }
 }
