@@ -209,12 +209,13 @@ const LazyPhotoCard: React.FC<{
 export const PhotoSelectPage: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { loading, error, photos, searchPhotos } = usePhotoGallery();
+  const { loading, error, photos, searchPhotos, searchGalleryPhotos } = usePhotoGallery();
   const [selectedPhotos, setSelectedPhotos] = useState<Set<string>>(new Set());
   const [allPhotoOption, setAllPhotoOption] = useState(false);
   const [manuallySelectedPhotos, setManuallySelectedPhotos] = useState<Set<string>>(new Set());
   const [modalPhoto, setModalPhoto] = useState<GalleryPhoto | null>(null);
   const [currentModalIndex, setCurrentModalIndex] = useState<number>(0);
+  const [isPurchased, setIsPurchased] = useState(false);
 
   const searchInfo = location.state?.searchInfo as PhotoSearchInfo;
   const forceAllPhotoOption = location.state?.forceAllPhotoOption as boolean;
@@ -225,13 +226,30 @@ export const PhotoSelectPage: React.FC = () => {
       return;
     }
     
-    console.log('PhotoSelectPage: Starting search with info:', searchInfo);
-    searchPhotos(searchInfo).then(() => {
+    console.log('PhotoSelectPage: Starting purchase check...');
+    
+    // まずgalleryで購入済みチェック（受付番号と撮影日のみで検索）
+    const purchaseCheckSearchInfo = {
+      receptionNumber: searchInfo.receptionNumber,
+      shootingDate: searchInfo.shootingDate,
+      customerName: searchInfo.customerName // 購入済みチェックでもcustomerNameを使用
+    };
+    
+    searchGalleryPhotos(purchaseCheckSearchInfo).then((galleryPhotos) => {
+      if (galleryPhotos.length > 0) {
+        console.log('PhotoSelectPage: Already purchased photos found:', galleryPhotos.length);
+        setIsPurchased(true);
+      } else {
+        console.log('PhotoSelectPage: No purchased photos found, proceeding with photo search...');
+        // 購入済みでない場合のみphotosを検索
+        return searchPhotos(searchInfo);
+      }
+    }).then(() => {
       console.log('PhotoSelectPage: Search completed');
     }).catch((err) => {
       console.error('PhotoSelectPage: Search failed:', err);
     });
-  }, [searchInfo, navigate, searchPhotos]);
+  }, [searchInfo, navigate, searchPhotos, searchGalleryPhotos]);
 
   // 全データ購入オプションを強制的に有効にする
   useEffect(() => {
@@ -391,7 +409,28 @@ export const PhotoSelectPage: React.FC = () => {
       </header>
 
       <div className="max-w-4xl mx-auto px-4 py-8">
-        {photos.length === 0 ? (
+        {isPurchased ? (
+          <div className="bg-white rounded-lg shadow-lg p-8 text-center">
+            <div className="mb-6">
+              <svg className="w-16 h-16 text-blue-600 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <h2 className="text-2xl font-bold text-gray-800 mb-2">写真選択済み</h2>
+            </div>
+            <p className="text-lg text-gray-600 mb-4">
+              すでに写真を選択済みです。
+            </p>
+            <p className="text-gray-600 mb-6">
+              変更がある場合にはLineにてお問い合わせください。
+            </p>
+            <button
+              onClick={() => navigate('/photo-info')}
+              className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              戻る
+            </button>
+          </div>
+        ) : photos.length === 0 ? (
           <div className="bg-white rounded-lg shadow-lg p-8 text-center">
             <p className="text-lg text-gray-600 mb-4">
               一致する写真が存在しませんでした。
