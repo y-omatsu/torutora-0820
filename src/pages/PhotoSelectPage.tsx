@@ -397,27 +397,10 @@ export const PhotoSelectPage: React.FC = () => {
     }, 2000); // 2秒後にプリロード状況をチェック
   }, [photos, checkImageCache]);
 
-  // 画像クリック時の処理（優先ダウンロード開始）
+  // 画像クリック時の処理（シンプル版）
   const handlePhotoClick = useCallback((photo: GalleryPhoto) => {
     const index = photos.findIndex(p => p.id === photo.id);
     console.log(`🖼️ Photo clicked: ${photo.number}, index: ${index}`);
-    
-    // 詳細なデバッグ情報を出力
-    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    const imageCache = (window as any).imageCache;
-    
-    console.log('🔍 PHOTO CLICK DEBUG:', {
-      photoNumber: photo.number,
-      photoIndex: index,
-      totalPhotos: photos.length,
-      isSafari: isSafari,
-      isMobile: isMobile,
-      cacheSize: imageCache?.size || 0,
-      maxCacheSize: 20,
-      userAgent: navigator.userAgent,
-      storageUrl: photo.storageUrl
-    });
     
     setCurrentModalIndex(index);
     setModalPhoto(photo);
@@ -432,58 +415,18 @@ export const PhotoSelectPage: React.FC = () => {
       setModalImageLoading(false);
       setModalImageError(false);
     } else {
-      // キャッシュにない場合は優先ダウンロードを開始
-      console.log(`🚀 Photo ${photo.number} not cached, starting PRIORITY load`);
+      // キャッシュにない場合はローディング状態を設定
+      console.log(`⏳ Photo ${photo.number} not cached, starting load`);
       setModalImageLoading(true);
       setModalImageError(false);
-      
-      // クリックした画像を優先ダウンロード
-      const priorityLoadPromise = (window as any).loadImageWithPriority;
-      if (priorityLoadPromise) {
-        const highResUrl = getHighResUrl(photo.storageUrl);
-        
-        console.log('🔍 PRIORITY LOAD START DEBUG:', {
-          photoNumber: photo.number,
-          originalUrl: photo.storageUrl,
-          highResUrl: highResUrl,
-          alt: `写真 ${photo.number}`,
-          priorityLoadFunction: typeof priorityLoadPromise
-        });
-        
-        priorityLoadPromise(highResUrl, `写真 ${photo.number}`)
-          .then(() => {
-            console.log(`✅ Priority load completed for photo ${photo.number}`);
-            // 優先ダウンロード完了後、表示を更新
-            setModalImageLoading(false);
-            setModalImageError(false);
-            // WatermarkedImageコンポーネントに再描画を促す
-            setModalImageKey(prev => prev + 1);
-          })
-          .catch((error: any) => {
-            console.error(`❌ Priority load failed for photo ${photo.number}:`, error);
-            console.log('🔍 PRIORITY LOAD ERROR DEBUG:', {
-              photoNumber: photo.number,
-              error: error,
-              errorMessage: error?.message,
-              errorStack: error?.stack
-            });
-            setModalImageError(true);
-            setModalImageLoading(false);
-          });
-      } else {
-        console.error('❌ Priority load function not available');
-        setModalImageError(true);
-        setModalImageLoading(false);
-      }
     }
     
     // プリロードは並行して開始（画像表示を待たない）
-    // ただし、現在の画像は既にWatermarkedImageで読み込まれるので、次の画像からプリロード
     console.log(`🚀 Starting preload for adjacent images from index ${index} in parallel`);
     preloadAdjacentImages(index);
   }, [photos, checkImageCache, preloadAdjacentImages]);
 
-  // 前の写真への移動（即座に表示開始）
+  // 前の写真への移動（シンプル版）
   const goToPrevPhoto = useCallback(() => {
     if (currentModalIndex > 0) {
       const newIndex = currentModalIndex - 1;
@@ -504,44 +447,19 @@ export const PhotoSelectPage: React.FC = () => {
         setModalImageLoading(false);
         setModalImageError(false);
       } else {
-        // キャッシュにない場合は優先ダウンロードを開始
-        console.log(`🚀 Photo ${newPhoto.number} not cached, starting PRIORITY load`);
+        // キャッシュにない場合はローディング状態を設定
+        console.log(`⏳ Photo ${newPhoto.number} not cached, starting load`);
         setModalImageLoading(true);
         setModalImageError(false);
-        
-        // クリックした画像を優先ダウンロード
-        const priorityLoadPromise = (window as any).loadImageWithPriority;
-        if (priorityLoadPromise) {
-          const highResUrl = getHighResUrl(newPhoto.storageUrl);
-          
-          priorityLoadPromise(highResUrl, `写真 ${newPhoto.number}`)
-            .then(() => {
-              console.log(`✅ Priority load completed for photo ${newPhoto.number}`);
-              // 優先ダウンロード完了後、表示を更新
-              setModalImageLoading(false);
-              setModalImageError(false);
-              // WatermarkedImageコンポーネントに再描画を促す
-              setModalImageKey(prev => prev + 1);
-            })
-            .catch((error: any) => {
-              console.error(`❌ Priority load failed for photo ${newPhoto.number}:`, error);
-              setModalImageError(true);
-              setModalImageLoading(false);
-            });
-        } else {
-          console.error('❌ Priority load function not available');
-          setModalImageError(true);
-          setModalImageLoading(false);
-        }
       }
       
       // プリロードは並行して開始（画像表示を待たない）
       console.log(`🚀 Starting preload for index ${newIndex} in parallel`);
       preloadAdjacentImages(newIndex);
     }
-  }, [currentModalIndex, photos, checkImageCache, modalImageLoading, preloadAdjacentImages]);
+  }, [currentModalIndex, photos, checkImageCache, preloadAdjacentImages]);
 
-  // 次の写真への移動（即座に表示開始）
+  // 次の写真への移動（シンプル版）
   const goToNextPhoto = useCallback(() => {
     if (currentModalIndex < photos.length - 1) {
       const newIndex = currentModalIndex + 1;
@@ -562,42 +480,17 @@ export const PhotoSelectPage: React.FC = () => {
         setModalImageLoading(false);
         setModalImageError(false);
       } else {
-        // キャッシュにない場合は優先ダウンロードを開始
-        console.log(`🚀 Photo ${newPhoto.number} not cached, starting PRIORITY load`);
+        // キャッシュにない場合はローディング状態を設定
+        console.log(`⏳ Photo ${newPhoto.number} not cached, starting load`);
         setModalImageLoading(true);
         setModalImageError(false);
-        
-        // クリックした画像を優先ダウンロード
-        const priorityLoadPromise = (window as any).loadImageWithPriority;
-        if (priorityLoadPromise) {
-          const highResUrl = getHighResUrl(newPhoto.storageUrl);
-          
-          priorityLoadPromise(highResUrl, `写真 ${newPhoto.number}`)
-            .then(() => {
-              console.log(`✅ Priority load completed for photo ${newPhoto.number}`);
-              // 優先ダウンロード完了後、表示を更新
-              setModalImageLoading(false);
-              setModalImageError(false);
-              // WatermarkedImageコンポーネントに再描画を促す
-              setModalImageKey(prev => prev + 1);
-            })
-            .catch((error: any) => {
-              console.error(`❌ Priority load failed for photo ${newPhoto.number}:`, error);
-              setModalImageError(true);
-              setModalImageLoading(false);
-            });
-        } else {
-          console.error('❌ Priority load function not available');
-          setModalImageError(true);
-          setModalImageLoading(false);
-        }
       }
       
       // プリロードは並行して開始（画像表示を待たない）
       console.log(`🚀 Starting preload for index ${newIndex} in parallel`);
       preloadAdjacentImages(newIndex);
     }
-  }, [currentModalIndex, photos, checkImageCache, modalImageLoading, preloadAdjacentImages]);
+  }, [currentModalIndex, photos, checkImageCache, preloadAdjacentImages]);
 
   // デバッグ用：プリロード状況を確認する関数
   useEffect(() => {
