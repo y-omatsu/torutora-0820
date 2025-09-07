@@ -452,7 +452,8 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
       currentSrc
     });
 
-    // キャッシュがない場合は新規作成
+    // キャッシュがない場合は直接Storageから読み込み（キャッシュ保存なし）
+    console.log('🔄 Loading directly from storage (no cache):', imageSrc);
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -556,24 +557,9 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
           }
         }
 
-        // キャッシュに保存
-        const cacheCanvas = document.createElement('canvas');
-        cacheCanvas.width = canvasWidth;
-        cacheCanvas.height = canvasHeight;
-        const cacheCtx = cacheCanvas.getContext('2d');
-        if (cacheCtx) {
-          cacheCtx.drawImage(canvas, 0, 0);
-          imageCache.set(cacheKey, {
-            canvas: cacheCanvas,
-            timestamp: Date.now()
-          });
-          
-          // キャッシュクリーンアップ
-          cleanupExpiredCache();
-          cleanupOldCache();
-          
-          console.log('Image cached:', cacheKey, 'Cache size:', imageCache.size);
-        }
+        // キャッシュにない場合は直接表示のみ（キャッシュ保存なし）
+        // これにより削除された画像も正常に表示される
+        console.log('✅ Image loaded directly from storage (no cache):', imageSrc);
 
         // 古い画像の読み込み完了時は表示を更新しない
         if (imageId && currentImageId && imageId !== currentImageId) {
@@ -646,17 +632,17 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
     console.log('🚀 Starting image load for:', imageSrc, 'ImageId:', imageId);
     img.src = getLowResUrl(imageSrc);
     
-    // Safari用：画像読み込み状況を定期的にチェック
+    // Safari用：画像読み込み状況を定期的にチェック（キャッシュにない場合）
     if (isSafari && isMobile) {
       const checkInterval = setInterval(() => {
         if (img.complete) {
           clearInterval(checkInterval);
           if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-            console.log('✅ Safari: Image loaded via polling check');
+            console.log('✅ Safari: Direct storage image loaded via polling check');
             // 手動でonloadを発火
             img.onload?.(new Event('load'));
           } else {
-            console.log('❌ Safari: Image failed via polling check');
+            console.log('❌ Safari: Direct storage image failed via polling check');
             img.onerror?.(new Event('error'));
           }
         }
