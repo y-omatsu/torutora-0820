@@ -252,6 +252,8 @@ interface WatermarkedImageProps {
   fallbackSrc?: string;
   // 競合状態防止用
   imageId?: string;
+  // CSSウォーターマーク用
+  useCssWatermark?: boolean;
 }
 
 export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({ 
@@ -265,7 +267,8 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
   hideInternalLoader = false,
   externalLoading = false,
   fallbackSrc,
-  imageId
+  imageId,
+  useCssWatermark = false
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -553,6 +556,66 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
   // 内部ローダーを隠すかどうか
   const showInternalLoader = !hideInternalLoader && isLoading && !externalLoading;
 
+  // CSSウォーターマーク版のレンダリング
+  if (useCssWatermark) {
+    return (
+      <div className={`relative ${className}`} style={style}>
+        {showInternalLoader && (
+          <div className="absolute inset-0 flex items-center justify-center bg-gray-200">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          </div>
+        )}
+        <img
+          src={currentSrc}
+          alt={alt}
+          className={`w-full h-full object-${objectFit}`}
+          style={{ 
+            display: isLoading ? 'none' : 'block',
+            opacity: externalLoading ? 0.3 : 1,
+            transition: 'opacity 0.3s ease'
+          }}
+          onLoad={() => {
+            console.log('✅ CSS Image loaded:', currentSrc);
+            setIsLoading(false);
+            setError(false);
+            if (onLoadComplete) {
+              onLoadComplete();
+            }
+          }}
+          onError={() => {
+            console.log('❌ CSS Image load error:', currentSrc);
+            if (fallbackSrc && currentSrc !== fallbackSrc) {
+              console.log('Trying fallback for CSS image:', fallbackSrc);
+              setCurrentSrc(fallbackSrc);
+            } else {
+              setError(true);
+              setIsLoading(false);
+              if (onLoadError) {
+                onLoadError();
+              }
+            }
+          }}
+        />
+        {/* CSSウォーターマーク - 文字のみ */}
+        <div 
+          className="absolute inset-0 flex items-center justify-center pointer-events-none"
+        >
+          <div 
+            className="text-white font-bold text-2xl md:text-4xl opacity-40 select-none"
+            style={{
+              textShadow: '2px 2px 4px rgba(0, 0, 0, 0.3)',
+              transform: 'rotate(-30deg)',
+              letterSpacing: '0.2em'
+            }}
+          >
+            ToruTora
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Canvas版のレンダリング（既存の実装）
   return (
     <div className={`relative ${className}`} style={style}>
       {showInternalLoader && (

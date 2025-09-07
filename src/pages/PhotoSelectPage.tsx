@@ -134,6 +134,7 @@ const LazyPhotoCard: React.FC<{
                   className="w-full h-full"
                   objectFit="cover"
                   fallbackSrc={fallbackSrc}
+                  useCssWatermark={true}
                 />
               );
             })()
