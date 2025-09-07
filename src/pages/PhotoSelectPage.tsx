@@ -69,7 +69,7 @@ const isMobile = () => {
 const getHighResUrl = (url: string): string => {
   if (url.includes('firebasestorage.googleapis.com')) {
     // プリロードと表示で同じURLを生成するため、固定値を使用
-    const quality = 10; // 固定品質
+    const quality = 5; // 固定品質
     const width = 200; // 固定幅
     return url.includes('?') ? `${url}&quality=${quality}&w=${width}` : `${url}?quality=${quality}&w=${width}`;
   }
@@ -341,11 +341,9 @@ export const PhotoSelectPage: React.FC = () => {
   }, [photos, checkImageCache]);
 
 
-  // 画像読み込み完了時のコールバック
+  // 画像読み込み完了時のコールバック（プリロードは既に並行実行中）
   const handleImageLoadComplete = useCallback((currentIndex: number) => {
-    console.log(`✅ Image load complete for index ${currentIndex}, starting preload immediately`);
-    // 現在の画像の読み込みが完了したら即座にプリロードを開始
-    preloadAdjacentImages(currentIndex);
+    console.log(`✅ Image load complete for index ${currentIndex}`);
     
     // プリロードの完了を少し待ってからログ出力
     setTimeout(() => {
@@ -357,42 +355,60 @@ export const PhotoSelectPage: React.FC = () => {
         console.log(`📊 Next image (${nextPhoto.number}) cache status:`, isCached ? 'CACHED' : 'NOT CACHED');
       }
     }, 2000); // 2秒後にプリロード状況をチェック
-  }, [preloadAdjacentImages, photos, checkImageCache]);
+  }, [photos, checkImageCache]);
 
-  // 簡素化されたhandlePhotoClick（WatermarkedImageに読み込みを任せる）
+  // 画像クリック時の処理（即座に表示開始）
   const handlePhotoClick = useCallback((photo: GalleryPhoto) => {
     const index = photos.findIndex(p => p.id === photo.id);
+    console.log(`🖼️ Photo clicked: ${photo.number}, index: ${index}`);
+    
     setCurrentModalIndex(index);
     setModalPhoto(photo);
     
-    // ローディング状態の初期化のみ（実際の読み込みはWatermarkedImageが担当）
-    setModalImageLoading(true);
-    setModalImageProgress(0);
-    setModalImageError(false);
+    // キャッシュをチェック
+    const isCached = checkImageCache(photo);
     
-    // プリロードは画像読み込み完了後に実行
-    // handleImageLoadCompleteがonLoadCompleteで呼ばれる
-  }, [photos]);
+    if (isCached) {
+      // キャッシュにある場合はローディング状態を設定しない
+      console.log(`✅ Photo ${photo.number} is cached, displaying immediately`);
+      setModalImageLoading(false);
+      setModalImageError(false);
+    } else {
+      // キャッシュにない場合はローディング状態を設定
+      console.log(`⏳ Photo ${photo.number} not cached, starting load`);
+      setModalImageLoading(true);
+      setModalImageProgress(0);
+      setModalImageError(false);
+    }
+    
+    // プリロードは並行して開始（画像表示を待たない）
+    console.log(`🚀 Starting preload for index ${index} in parallel`);
+    preloadAdjacentImages(index);
+  }, [photos, checkImageCache, preloadAdjacentImages]);
 
-  // 簡素化されたgoToPrevPhoto
+  // 前の写真への移動（即座に表示開始）
   const goToPrevPhoto = useCallback(() => {
     if (currentModalIndex > 0) {
       const newIndex = currentModalIndex - 1;
       const newPhoto = photos[newIndex];
       console.log(`⬅️ Going to previous photo: ${currentModalIndex} -> ${newIndex}`);
       
+      // 画像とインデックスを更新
+      setCurrentModalIndex(newIndex);
+      setModalPhoto(newPhoto);
+      
       // キャッシュをチェック
       const isCached = checkImageCache(newPhoto);
       
       if (isCached) {
         // キャッシュにある場合はローディング状態を設定しない
-        console.log(`✅ Photo ${newPhoto.number} is cached, no loading state needed`);
+        console.log(`✅ Photo ${newPhoto.number} is cached, displaying immediately`);
         setModalImageLoading(false);
         setModalImageProgress(100);
         setModalImageError(false);
       } else {
         // キャッシュにない場合はローディング状態を設定
-        console.log(`⏳ Photo ${newPhoto.number} not cached, setting loading state`);
+        console.log(`⏳ Photo ${newPhoto.number} not cached, starting load`);
         setModalImageLoading(true);
         setModalImageProgress(0);
         setModalImageError(false);
@@ -407,34 +423,35 @@ export const PhotoSelectPage: React.FC = () => {
         }, 10000); // 10秒でタイムアウト
       }
       
-      // 画像とインデックスを更新
-      setCurrentModalIndex(newIndex);
-      setModalPhoto(newPhoto);
-      
-      // プリロードは画像読み込み完了後に実行
-      // handleImageLoadCompleteがonLoadCompleteで呼ばれる
+      // プリロードは並行して開始（画像表示を待たない）
+      console.log(`🚀 Starting preload for index ${newIndex} in parallel`);
+      preloadAdjacentImages(newIndex);
     }
-  }, [currentModalIndex, photos, checkImageCache, modalImageLoading]);
+  }, [currentModalIndex, photos, checkImageCache, modalImageLoading, preloadAdjacentImages]);
 
-  // 簡素化されたgoToNextPhoto
+  // 次の写真への移動（即座に表示開始）
   const goToNextPhoto = useCallback(() => {
     if (currentModalIndex < photos.length - 1) {
       const newIndex = currentModalIndex + 1;
       const newPhoto = photos[newIndex];
       console.log(`➡️ Going to next photo: ${currentModalIndex} -> ${newIndex}`);
       
+      // 画像とインデックスを更新
+      setCurrentModalIndex(newIndex);
+      setModalPhoto(newPhoto);
+      
       // キャッシュをチェック
       const isCached = checkImageCache(newPhoto);
       
       if (isCached) {
         // キャッシュにある場合はローディング状態を設定しない
-        console.log(`✅ Photo ${newPhoto.number} is cached, no loading state needed`);
+        console.log(`✅ Photo ${newPhoto.number} is cached, displaying immediately`);
         setModalImageLoading(false);
         setModalImageProgress(100);
         setModalImageError(false);
       } else {
         // キャッシュにない場合はローディング状態を設定
-        console.log(`⏳ Photo ${newPhoto.number} not cached, setting loading state`);
+        console.log(`⏳ Photo ${newPhoto.number} not cached, starting load`);
         setModalImageLoading(true);
         setModalImageProgress(0);
         setModalImageError(false);
@@ -449,14 +466,11 @@ export const PhotoSelectPage: React.FC = () => {
         }, 10000); // 10秒でタイムアウト
       }
       
-      // 画像とインデックスを更新
-      setCurrentModalIndex(newIndex);
-      setModalPhoto(newPhoto);
-      
-      // プリロードは画像読み込み完了後に実行
-      // handleImageLoadCompleteがonLoadCompleteで呼ばれる
+      // プリロードは並行して開始（画像表示を待たない）
+      console.log(`🚀 Starting preload for index ${newIndex} in parallel`);
+      preloadAdjacentImages(newIndex);
     }
-  }, [currentModalIndex, photos, checkImageCache, modalImageLoading]);
+  }, [currentModalIndex, photos, checkImageCache, modalImageLoading, preloadAdjacentImages]);
 
   // デバッグ用：プリロード状況を確認する関数
   useEffect(() => {
