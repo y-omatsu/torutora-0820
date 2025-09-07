@@ -350,6 +350,14 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
     // Safari用メモリ圧迫チェック
     checkMemoryPressure();
     
+    // Safari用：キャッシュを無視して強制再読み込み（リロードボタン用）
+    const isSafariReload = isSafari && isMobile && imageSrc.includes('?t=');
+    if (isSafariReload) {
+      console.log('🔄 Safari reload detected, bypassing cache');
+      const cacheKey = getCacheKey(imageSrc, alt);
+      imageCache.delete(cacheKey); // キャッシュを削除
+    }
+    
     const cacheKey = getCacheKey(imageSrc, alt);
     const cached = imageCache.get(cacheKey);
     

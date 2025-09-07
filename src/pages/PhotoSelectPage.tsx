@@ -198,6 +198,7 @@ export const PhotoSelectPage: React.FC = () => {
   const [modalImageLoading, setModalImageLoading] = useState<boolean>(false);
   const [modalImageProgress, setModalImageProgress] = useState<number>(0);
   const [modalImageError, setModalImageError] = useState<boolean>(false);
+  const [modalImageKey, setModalImageKey] = useState<number>(0); // 画像の強制再読み込み用
 
   const searchInfo = location.state?.searchInfo as PhotoSearchInfo;
   const forceAllPhotoOption = location.state?.forceAllPhotoOption as boolean;
@@ -679,9 +680,11 @@ export const PhotoSelectPage: React.FC = () => {
                     setModalImageError(false);
                     setModalImageLoading(true);
                     setModalImageProgress(0);
-                    // 強制的に画像を再読み込み
-                    const img = new Image();
-                    img.src = getHighResUrl(modalPhoto!.storageUrl) + '?t=' + Date.now();
+                    // 強制的に画像を再読み込み（keyを変更してコンポーネントを再マウント）
+                    setModalImageKey(prev => prev + 1);
+                    // Safari用：URLにタイムスタンプを追加してキャッシュを回避
+                    const timestamp = Date.now();
+                    console.log('🔄 Reload with timestamp:', timestamp);
                   }}
                   className="bg-gray-400 bg-opacity-70 text-white rounded-full w-10 h-10 flex items-center justify-center hover:bg-opacity-90 transition-all"
                   title="再読み込み"
@@ -754,7 +757,8 @@ export const PhotoSelectPage: React.FC = () => {
               
               {/* WatermarkedImageコンポーネント（読み込み処理を一元化） */}
               <WatermarkedImage
-                src={getHighResUrl(modalPhoto.storageUrl)}
+                key={`${modalPhoto.id}-${modalImageKey}`} // 強制再読み込み用のkey
+                src={getHighResUrl(modalPhoto.storageUrl) + (modalImageKey > 0 ? `?t=${Date.now()}` : '')}
                 alt={`写真 ${modalPhoto.number}`}
                 className="max-w-full max-h-full"
                 objectFit="contain"
