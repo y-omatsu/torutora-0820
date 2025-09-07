@@ -854,39 +854,14 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
       currentSrc
     });
 
-    // 削除された画像を表示しようとしている場合の特別処理
+    // キャッシュがない場合は直接Storageから読み込み（プリロード待機を無視）
     if (!cached) {
-      console.log('🚫 Image was deleted from cache, loading fresh from storage:', imageSrc);
-      console.log('💡 This might be due to memory cleanup - loading fresh image');
+      console.log('🚫 Image not in cache, loading directly from storage:', imageSrc);
+      console.log('💡 Skipping preload wait for immediate display');
       
-      // プリロード途中の画像かチェック
+      // プリロードは継続させるが、表示は直接読み込み
       if (preloadingImages.has(cacheKey)) {
-        console.log('⏳ Image is currently preloading, waiting for completion:', cacheKey);
-        
-        // プリロード待機のタイムアウト処理（5秒でタイムアウト）
-        const preloadTimeout = setTimeout(() => {
-          console.log('⏰ Preload wait timeout, but keeping preload active:', cacheKey);
-          // プリロードは継続させるが、表示用に直接読み込みも開始
-          console.log('🔄 Starting parallel direct load while preload continues:', cacheKey);
-          // プリロードを無視して直接読み込みに進む（無限ループを防ぐ）
-          console.log('🚀 Bypassing preload wait, proceeding to direct load');
-          // 直接読み込み処理を実行
-          loadImageDirectly();
-        }, 5000);
-        
-        preloadingImages.get(cacheKey)!.then(() => {
-          clearTimeout(preloadTimeout);
-          console.log('✅ Preload completed, retrying display:', cacheKey);
-          // プリロード完了後に再試行（キャッシュから取得）
-          getCachedOrCreateImage(imageSrc, isFallback);
-        }).catch((error) => {
-          clearTimeout(preloadTimeout);
-          console.error('❌ Preload failed, falling back to direct load:', error);
-          // プリロード失敗時は直接読み込み
-          console.log('🚀 Preload failed, proceeding to direct load');
-          loadImageDirectly();
-        });
-        return;
+        console.log('⏳ Image is currently preloading in background, proceeding with direct load:', cacheKey);
       }
       
       // Safari用：メモリ不足時の特別処理
