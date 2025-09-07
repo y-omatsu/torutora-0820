@@ -310,6 +310,13 @@ export const PhotoSelectPage: React.FC = () => {
       const highResUrl = getHighResUrl(photo.storageUrl);
       
       console.log(`🔄 Preloading modal image ${i}: ${photo.number}, src: ${highResUrl}`);
+      console.log(`🔍 Preload URL details:`, {
+        originalUrl: photo.storageUrl,
+        highResUrl: highResUrl,
+        hasQuery: highResUrl.includes('?'),
+        quality: highResUrl.includes('quality='),
+        width: highResUrl.includes('w=')
+      });
       
       preloadPromises.push(
         preloadImage(highResUrl, `写真 ${photo.number}`)
@@ -852,9 +859,19 @@ export const PhotoSelectPage: React.FC = () => {
                 key={`${modalPhoto.id}-${modalImageKey}`} // 強制再読み込み用のkey
                 src={(() => {
                   const url = getHighResUrl(modalPhoto.storageUrl);
-                  // リロード時はタイムスタンプを追加
+                  // リロード時のみタイムスタンプを追加（modalImageKeyが0より大きい場合）
                   const finalUrl = modalImageKey > 0 ? `${url}?t=${Date.now()}` : url;
                   console.log(`🖼️ Displaying image ${modalPhoto.number}, src: ${finalUrl}, reloadKey: ${modalImageKey}`);
+                  console.log(`🔍 Display URL details:`, {
+                    originalUrl: modalPhoto.storageUrl,
+                    baseUrl: url,
+                    finalUrl: finalUrl,
+                    isReload: modalImageKey > 0,
+                    hasTimestamp: finalUrl.includes('?t='),
+                    hasQuery: finalUrl.includes('?'),
+                    quality: finalUrl.includes('quality='),
+                    width: finalUrl.includes('w=')
+                  });
                   return finalUrl;
                 })()}
                 alt={`写真 ${modalPhoto.number}`}
