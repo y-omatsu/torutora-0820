@@ -44,7 +44,9 @@ const getOptimalImageUrl = (originalUrl: string): { src: string; fallbackSrc?: s
       fileName,
       thumbnailFileName,
       thumbnailPath,
-      thumbnail: thumbnailUrl
+      thumbnail: thumbnailUrl,
+      userAgent: navigator.userAgent,
+      isMobile: isMobile()
     });
     
     // サムネイルを優先し、元画像をフォールバックとして設定
@@ -142,7 +144,7 @@ const LazyPhotoCard: React.FC<{
                   className="w-full h-full"
                   objectFit="cover"
                   fallbackSrc={fallbackSrc}
-                  useCssWatermark={true}
+                  useCssWatermark={false}
                 />
               );
             })()

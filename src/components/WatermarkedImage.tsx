@@ -368,13 +368,15 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
     
     img.onload = () => {
       try {
+        console.log('🖼️ Image onload triggered for:', imageSrc, 'ImageId:', imageId, 'CurrentImageId:', currentImageId);
+        console.log('🖼️ Image dimensions:', img.width, 'x', img.height);
+        console.log('🖼️ User Agent:', navigator.userAgent);
+        
         // 古い画像の読み込み完了時は表示を更新しない
         if (imageId && currentImageId && imageId !== currentImageId) {
           console.log('🚫 Ignoring load completion for outdated image:', imageId, 'Current:', currentImageId);
           return;
         }
-        
-        console.log('🖼️ Image onload triggered for:', imageSrc, 'ImageId:', imageId, 'CurrentImageId:', currentImageId);
         
         img.alt = alt;
         
@@ -489,8 +491,11 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
       }
     };
 
-    img.onerror = () => {
+    img.onerror = (error) => {
       console.error('Image loading error for:', imageSrc);
+      console.error('Error details:', error);
+      console.error('User Agent:', navigator.userAgent);
+      console.error('Image src:', img.src);
       
       // 古い画像の読み込みエラー時は表示を更新しない
       if (imageId && currentImageId && imageId !== currentImageId) {
@@ -524,6 +529,8 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
   // srcが変更された時の初期化処理
   useEffect(() => {
     console.log('🔄 Image src changed from', currentSrc, 'to', src, 'ImageId:', imageId);
+    console.log('🔄 User Agent:', navigator.userAgent);
+    console.log('🔄 Is Mobile:', /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent));
     setCurrentSrc(src);
     setCurrentImageId(imageId);
     setIsLoading(true);
@@ -575,7 +582,7 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
             transition: 'opacity 0.3s ease'
           }}
           onLoad={() => {
-            console.log('✅ CSS Image loaded:', currentSrc);
+            console.log('✅ CSS Image loaded:', currentSrc, 'FallbackSrc:', fallbackSrc);
             setIsLoading(false);
             setError(false);
             if (onLoadComplete) {
@@ -583,11 +590,12 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
             }
           }}
           onError={() => {
-            console.log('❌ CSS Image load error:', currentSrc);
+            console.log('❌ CSS Image load error:', currentSrc, 'FallbackSrc:', fallbackSrc);
             if (fallbackSrc && currentSrc !== fallbackSrc) {
               console.log('Trying fallback for CSS image:', fallbackSrc);
               setCurrentSrc(fallbackSrc);
             } else {
+              console.log('No fallback available, showing error');
               setError(true);
               setIsLoading(false);
               if (onLoadError) {
