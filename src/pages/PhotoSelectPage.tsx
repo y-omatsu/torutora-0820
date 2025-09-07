@@ -1,19 +1,19 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { usePhotoGallery } from '../hooks/usePhotoGallery';
-import { WatermarkedImage } from '../components/WatermarkedImage';
+import { WatermarkedImage, preloadImage } from '../components/WatermarkedImage';
 import { PhotoSearchInfo, GalleryPhoto } from '../types/Gallery';
 
-// サムネイル画像URL取得関数（thumbs/フォルダを参照）
-const getThumbnailUrl = (originalUrl: string): string => {
+// 最適な画像URL取得関数（サムネイル優先、フォールバック付き）
+const getOptimalImageUrl = (originalUrl: string): { src: string; fallbackSrc?: string } => {
   if (!originalUrl.includes('firebasestorage.googleapis.com')) {
-    return originalUrl;
+    return { src: originalUrl };
   }
 
   try {
     // Firebase StorageのURLから画像パスを抽出
     const urlParts = originalUrl.split('/o/');
-    if (urlParts.length < 2) return originalUrl;
+    if (urlParts.length < 2) return { src: originalUrl };
     
     const pathAndQuery = urlParts[1];
     const pathPart = pathAndQuery.split('?')[0];
@@ -24,7 +24,7 @@ const getThumbnailUrl = (originalUrl: string): string => {
     
     // パスを分割（例: "117-澤田-堀内/001"）
     const pathSegments = decodedPath.split('/');
-    if (pathSegments.length < 2) return originalUrl;
+    if (pathSegments.length < 2) return { src: originalUrl };
     
     const folderName = pathSegments[0]; // "117-澤田-堀内"
     const fileName = pathSegments[pathSegments.length - 1]; // "001"
@@ -34,30 +34,34 @@ const getThumbnailUrl = (originalUrl: string): string => {
     const thumbnailFileName = `${fileName}_200x200`;
     const thumbnailPath = `${folderName}/thumbs/${thumbnailFileName}`;
     
-    // 新しいURLを構築（.jpg拡張子は付けない）
-    const newUrl = `${urlParts[0]}/o/${encodeURIComponent(thumbnailPath)}${queryPart}`;
+    // サムネイルURLを構築（.jpg拡張子は付けない）
+    const thumbnailUrl = `${urlParts[0]}/o/${encodeURIComponent(thumbnailPath)}${queryPart}`;
     
-    console.log('Thumbnail URL conversion:', {
+    console.log('Optimal image URL selection:', {
       original: originalUrl,
       decodedPath,
       folderName,
       fileName,
       thumbnailFileName,
       thumbnailPath,
-      thumbnail: newUrl
+      thumbnail: thumbnailUrl
     });
     
-    return newUrl;
+    // サムネイルを優先し、元画像をフォールバックとして設定
+    return { 
+      src: thumbnailUrl, 
+      fallbackSrc: originalUrl 
+    };
   } catch (error) {
-    console.error('Failed to convert to thumbnail URL:', error);
-    return originalUrl;
+    console.error('Failed to convert to optimal image URL:', error);
+    return { src: originalUrl };
   }
 };
 
 // 高解像度画像URL取得関数（元画像のまま、品質のみ調整）
 const getHighResUrl = (url: string): string => {
   if (url.includes('firebasestorage.googleapis.com')) {
-    return url.includes('?') ? `${url}&quality=80` : `${url}?quality=80`;
+    return url.includes('?') ? `${url}&quality=10&w=200` : `${url}?quality=10&w=200`;
   }
   return url;
 };
@@ -86,7 +90,7 @@ const useIntersectionObserver = (options = {}) => {
   return [ref, isIntersecting] as const;
 };
 
-// 遅延読み込み画像コンポーネント（サムネイル対応版）
+// 修正版：遅延読み込み画像コンポーネント（WatermarkedImageに読み込みを一任）
 const LazyPhotoCard: React.FC<{
   photo: GalleryPhoto;
   isSelected: boolean;
@@ -95,85 +99,12 @@ const LazyPhotoCard: React.FC<{
   allPhotoOption: boolean;
 }> = ({ photo, isSelected, onToggleSelection, onPhotoClick, allPhotoOption }) => {
   const [imageRef, isVisible] = useIntersectionObserver();
-  const [imageLoaded, setImageLoaded] = useState(false);
-  const [imageError, setImageError] = useState(false);
-  const [imageStartedLoading, setImageStartedLoading] = useState(false);
   const [localIsSelected, setLocalIsSelected] = useState(isSelected);
 
   // 外部の選択状態が変更されたときにローカル状態を更新
   useEffect(() => {
     setLocalIsSelected(isSelected);
   }, [isSelected]);
-
-  // 画像の読み込み状態を保持（再レンダリング時も画像が消えないように）
-  const [imageSrc, setImageSrc] = useState<string | null>(null);
-  const [imageLoadError, setImageLoadError] = useState(false);
-
-  // サムネイル用の軽量な画像コンポーネント（フォールバック付き）
-  const ThumbnailImage: React.FC<{ src: string; alt: string; onLoad: () => void; onError: () => void }> = ({ 
-    src, 
-    alt, 
-    onLoad, 
-    onError 
-  }) => {
-    const [imageSrc, setImageSrc] = useState<string>(src);
-    const [hasFallback, setHasFallback] = useState<boolean>(false);
-
-    const handleError = () => {
-      if (!hasFallback) {
-        // サムネイルが見つからない場合、元画像を使用
-        console.log('Falling back to original image for:', alt);
-        setImageSrc(photo.storageUrl);
-        setHasFallback(true);
-      } else {
-        onError();
-      }
-    };
-
-    return (
-      <img
-        src={imageSrc}
-        alt={alt}
-        className="w-full h-full object-cover"
-        onLoad={onLoad}
-        onError={handleError}
-        loading="eager"
-        decoding="async"
-        style={{
-          // 軽量なウォーターマーク風の効果をCSSで
-          filter: 'contrast(0.9) brightness(0.95)',
-          position: 'relative'
-        }}
-      />
-    );
-  };
-
-  // サムネイル画像の読み込み処理
-  useEffect(() => {
-    if (!isVisible) return;
-
-    setImageStartedLoading(true);
-    
-    // サムネイル画像を読み込み
-    const img = new Image();
-    img.onload = () => {
-      setImageLoaded(true);
-      setImageSrc(getThumbnailUrl(photo.storageUrl));
-    };
-    img.onerror = () => {
-      setImageError(true);
-      setImageLoadError(true);
-      console.error(`Failed to load thumbnail: ${photo.id}`, getThumbnailUrl(photo.storageUrl));
-    };
-    
-    // thumbs/フォルダのサムネイル画像を使用
-    img.src = getThumbnailUrl(photo.storageUrl);
-
-    return () => {
-      img.onload = null;
-      img.onerror = null;
-    };
-  }, [isVisible, photo.storageUrl, photo.id]);
 
   return (
     <div ref={imageRef} className="relative">
@@ -192,94 +123,20 @@ const LazyPhotoCard: React.FC<{
                 <span className="text-xs">画像を準備中</span>
               </div>
             </div>
-          ) : imageError ? (
-            // エラー状態（サムネイルが見つからない場合）
-            <div className="w-full h-full flex items-center justify-center bg-gray-100">
-              <div className="text-center text-red-400">
-                <svg className="w-8 h-8 mx-auto mb-2" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
-                </svg>
-                <span className="text-xs">サムネイル準備中</span>
-              </div>
-            </div>
-          ) : imageStartedLoading && !imageLoaded ? (
-            // 読み込み中状態
-            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-200 to-gray-300">
-              <div className="text-center text-gray-500">
-                <div className="relative mx-auto mb-2">
-                  <div className="w-8 h-8 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin"></div>
-                </div>
-                <span className="text-xs font-medium">読み込み中...</span>
-                <div className="w-16 h-1 bg-gray-300 rounded-full mx-auto mt-2 overflow-hidden">
-                  <div className="h-full bg-blue-500 rounded-full animate-pulse" style={{ width: '60%' }}></div>
-                </div>
-              </div>
-            </div>
-          ) : imageSrc && !imageLoadError ? (
-            // サムネイル画像表示（読み込み済みの画像を保持）
-            <div className="relative w-full h-full overflow-hidden">
-              <img
-                src={imageSrc}
-                alt={`写真 ${photo.number}`}
-                className="w-full h-full object-cover"
-                loading="eager"
-                decoding="async"
-                style={{
-                  filter: 'contrast(0.9) brightness(0.95)',
-                  position: 'relative'
-                }}
-              />
-              {/* 軽量なウォーターマーク表示 */}
-              <div className="absolute inset-0 pointer-events-none">
-                <div 
-                  className="absolute inset-0 opacity-20"
-                  style={{
-                    backgroundImage: `url("data:image/svg+xml,${encodeURIComponent(`
-                      <svg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 200 200'>
-                        <defs>
-                          <pattern id='watermark' x='0' y='0' width='100' height='100' patternUnits='userSpaceOnUse'>
-                            <text x='50' y='50' font-family='Arial' font-size='12' font-weight='bold' 
-                                  fill='white' text-anchor='middle' transform='rotate(-30 50 50)'>ToruTora</text>
-                          </pattern>
-                        </defs>
-                        <rect width='200' height='200' fill='url(#watermark)'/>
-                      </svg>
-                    `)}")`,
-                    backgroundRepeat: 'repeat'
-                  }}
-                />
-              </div>
-            </div>
           ) : (
-            // フォールバック表示（元画像を使用）
-            <div className="relative w-full h-full overflow-hidden">
-              <ThumbnailImage
-                src={photo.storageUrl}
-                alt={`写真 ${photo.number}`}
-                onLoad={() => setImageLoaded(true)}
-                onError={() => setImageError(true)}
-              />
-              {/* 軽量なウォーターマーク表示 */}
-              <div className="absolute inset-0 pointer-events-none">
-                <div 
-                  className="absolute inset-0 opacity-20"
-                  style={{
-                    backgroundImage: `url("data:image/svg+xml,${encodeURIComponent(`
-                      <svg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 200 200'>
-                        <defs>
-                          <pattern id='watermark' x='0' y='0' width='100' height='100' patternUnits='userSpaceOnUse'>
-                            <text x='50' y='50' font-family='Arial' font-size='12' font-weight='bold' 
-                                  fill='white' text-anchor='middle' transform='rotate(-30 50 50)'>ToruTora</text>
-                          </pattern>
-                        </defs>
-                        <rect width='200' height='200' fill='url(#watermark)'/>
-                      </svg>
-                    `)}")`,
-                    backgroundRepeat: 'repeat'
-                  }}
+            // WatermarkedImageに読み込みを一任（最適化されたURL選択）
+            (() => {
+              const { src, fallbackSrc } = getOptimalImageUrl(photo.storageUrl);
+              return (
+                <WatermarkedImage
+                  src={src}
+                  alt={`写真 ${photo.number}`}
+                  className="w-full h-full"
+                  objectFit="cover"
+                  fallbackSrc={fallbackSrc}
                 />
-              </div>
-            </div>
+              );
+            })()
           )}
           
           <button
@@ -325,7 +182,7 @@ export const PhotoSelectPage: React.FC = () => {
   const [currentModalIndex, setCurrentModalIndex] = useState<number>(0);
   const [isPurchased, setIsPurchased] = useState(false);
   
-  // モーダル画像のローディング状況の状態
+  // モーダル画像のローディング状況の状態（WatermarkedImageと連携）
   const [modalImageLoading, setModalImageLoading] = useState<boolean>(false);
   const [modalImageProgress, setModalImageProgress] = useState<number>(0);
   const [modalImageError, setModalImageError] = useState<boolean>(false);
@@ -390,96 +247,193 @@ export const PhotoSelectPage: React.FC = () => {
     });
   }, [allPhotoOption]);
 
+  // キャッシュチェック関数
+  const checkImageCache = useCallback((photo: GalleryPhoto) => {
+    const highResUrl = getHighResUrl(photo.storageUrl);
+    const cacheKey = `${highResUrl}|写真 ${photo.number}`;
+    
+    // グローバルキャッシュをチェック（WatermarkedImageのキャッシュと同じ）
+    const cached = (window as any).imageCache?.get?.(cacheKey);
+    if (cached && Date.now() - cached.timestamp < 30 * 60 * 1000) { // 30分で期限切れ
+      console.log('✅ Image found in cache:', cacheKey);
+      return true;
+    }
+    
+    console.log('❌ Image not in cache:', cacheKey);
+    return false;
+  }, []);
+
+  // 画像プリロード関数（前後1枚ずつ）
+  const preloadAdjacentImages = useCallback((currentIndex: number) => {
+    console.log(`🚀 Starting preload for index ${currentIndex}, total photos: ${photos.length}`);
+    const preloadPromises: Promise<void>[] = [];
+    
+    // 前後1枚ずつプリロード（モーダル用の高解像度画像）
+    const indicesToPreload = [
+      currentIndex - 1, // 前の画像
+      currentIndex + 1  // 次の画像
+    ].filter(i => i >= 0 && i < photos.length); // 範囲内のインデックスのみ
+    
+    console.log(`📋 Indices to preload:`, indicesToPreload);
+    
+    if (indicesToPreload.length === 0) {
+      console.log(`⚠️ No images to preload for index ${currentIndex}`);
+      return;
+    }
+    
+    for (const i of indicesToPreload) {
+      const photo = photos[i];
+      // モーダル用の高解像度URLを使用
+      const highResUrl = getHighResUrl(photo.storageUrl);
+      
+      console.log(`🔄 Preloading modal image ${i}: ${photo.number}, src: ${highResUrl}`);
+      
+      preloadPromises.push(
+        preloadImage(highResUrl, `写真 ${photo.number}`)
+          .then(() => console.log(`✅ Successfully preloaded modal image ${i}: ${photo.number}`))
+          .catch(err => console.warn(`❌ Failed to preload modal image ${i}:`, err))
+      );
+    }
+    
+    // プリロードを並列実行
+    Promise.allSettled(preloadPromises).then(results => {
+      const successCount = results.filter(r => r.status === 'fulfilled').length;
+      console.log(`🎯 Preload completed: ${successCount}/${preloadPromises.length} adjacent modal images`);
+    });
+  }, [photos]);
+
+
+  // 画像読み込み完了時のコールバック
+  const handleImageLoadComplete = useCallback((currentIndex: number) => {
+    console.log(`✅ Image load complete for index ${currentIndex}, starting preload immediately`);
+    // 現在の画像の読み込みが完了したら即座にプリロードを開始
+    preloadAdjacentImages(currentIndex);
+  }, [preloadAdjacentImages]);
+
+  // 簡素化されたhandlePhotoClick（WatermarkedImageに読み込みを任せる）
   const handlePhotoClick = useCallback((photo: GalleryPhoto) => {
     const index = photos.findIndex(p => p.id === photo.id);
     setCurrentModalIndex(index);
     setModalPhoto(photo);
     
-    // モーダル画像のローディング状態をリセット
+    // ローディング状態の初期化のみ（実際の読み込みはWatermarkedImageが担当）
     setModalImageLoading(true);
     setModalImageProgress(0);
     setModalImageError(false);
     
-    // 高解像度画像の読み込み開始
-    const img = new Image();
-    
-    img.onloadstart = () => {
-      setModalImageLoading(true);
-      setModalImageProgress(10);
-    };
-    
-    img.onprogress = (event) => {
-      if (event.lengthComputable) {
-        const progress = Math.round((event.loaded / event.total) * 100);
-        setModalImageProgress(progress);
-      }
-    };
-    
-    img.onload = () => {
-      setModalImageLoading(false);
-      setModalImageProgress(100);
-      setModalImageError(false);
-    };
-    
-    img.onerror = () => {
-      setModalImageLoading(false);
-      setModalImageError(true);
-      console.error('Failed to load modal image:', photo.storageUrl);
-    };
-    
-    // 高解像度画像を読み込み
-    img.src = getHighResUrl(photo.storageUrl);
+    // プリロードは画像読み込み完了後に実行
+    // handleImageLoadCompleteがonLoadCompleteで呼ばれる
   }, [photos]);
 
+  // 簡素化されたgoToPrevPhoto
   const goToPrevPhoto = useCallback(() => {
     if (currentModalIndex > 0) {
       const newIndex = currentModalIndex - 1;
-      setCurrentModalIndex(newIndex);
-      setModalPhoto(photos[newIndex]);
+      const newPhoto = photos[newIndex];
+      console.log(`⬅️ Going to previous photo: ${currentModalIndex} -> ${newIndex}`);
       
-      // 新しい画像のローディング状態をリセット
-      setModalImageLoading(true);
-      setModalImageProgress(0);
-      setModalImageError(false);
+      // キャッシュをチェック
+      const isCached = checkImageCache(newPhoto);
       
-      // 高解像度画像を読み込み
-      const img = new Image();
-      img.onload = () => {
+      if (isCached) {
+        // キャッシュにある場合はローディング状態を設定しない
+        console.log(`✅ Photo ${newPhoto.number} is cached, no loading state needed`);
         setModalImageLoading(false);
         setModalImageProgress(100);
-      };
-      img.onerror = () => {
-        setModalImageLoading(false);
-        setModalImageError(true);
-      };
-      img.src = getHighResUrl(photos[newIndex].storageUrl);
+        setModalImageError(false);
+      } else {
+        // キャッシュにない場合はローディング状態を設定
+        console.log(`⏳ Photo ${newPhoto.number} not cached, setting loading state`);
+        setModalImageLoading(true);
+        setModalImageProgress(0);
+        setModalImageError(false);
+        
+        // タイムアウトを設定して、読み込みが完了しない場合のフォールバック
+        setTimeout(() => {
+          if (modalImageLoading) {
+            console.log('⚠️ Image load timeout, forcing modal to close');
+            setModalImageLoading(false);
+            setModalImageError(true);
+          }
+        }, 10000); // 10秒でタイムアウト
+      }
+      
+      // 画像とインデックスを更新
+      setCurrentModalIndex(newIndex);
+      setModalPhoto(newPhoto);
+      
+      // プリロードは画像読み込み完了後に実行
+      // handleImageLoadCompleteがonLoadCompleteで呼ばれる
     }
-  }, [currentModalIndex, photos]);
+  }, [currentModalIndex, photos, checkImageCache, modalImageLoading]);
 
+  // 簡素化されたgoToNextPhoto
   const goToNextPhoto = useCallback(() => {
     if (currentModalIndex < photos.length - 1) {
       const newIndex = currentModalIndex + 1;
-      setCurrentModalIndex(newIndex);
-      setModalPhoto(photos[newIndex]);
+      const newPhoto = photos[newIndex];
+      console.log(`➡️ Going to next photo: ${currentModalIndex} -> ${newIndex}`);
       
-      // 新しい画像のローディング状態をリセット
-      setModalImageLoading(true);
-      setModalImageProgress(0);
-      setModalImageError(false);
+      // キャッシュをチェック
+      const isCached = checkImageCache(newPhoto);
       
-      // 高解像度画像を読み込み
-      const img = new Image();
-      img.onload = () => {
+      if (isCached) {
+        // キャッシュにある場合はローディング状態を設定しない
+        console.log(`✅ Photo ${newPhoto.number} is cached, no loading state needed`);
         setModalImageLoading(false);
         setModalImageProgress(100);
-      };
-      img.onerror = () => {
-        setModalImageLoading(false);
-        setModalImageError(true);
-      };
-      img.src = getHighResUrl(photos[newIndex].storageUrl);
+        setModalImageError(false);
+      } else {
+        // キャッシュにない場合はローディング状態を設定
+        console.log(`⏳ Photo ${newPhoto.number} not cached, setting loading state`);
+        setModalImageLoading(true);
+        setModalImageProgress(0);
+        setModalImageError(false);
+        
+        // タイムアウトを設定して、読み込みが完了しない場合のフォールバック
+        setTimeout(() => {
+          if (modalImageLoading) {
+            console.log('⚠️ Image load timeout, forcing modal to close');
+            setModalImageLoading(false);
+            setModalImageError(true);
+          }
+        }, 10000); // 10秒でタイムアウト
+      }
+      
+      // 画像とインデックスを更新
+      setCurrentModalIndex(newIndex);
+      setModalPhoto(newPhoto);
+      
+      // プリロードは画像読み込み完了後に実行
+      // handleImageLoadCompleteがonLoadCompleteで呼ばれる
     }
-  }, [currentModalIndex, photos]);
+  }, [currentModalIndex, photos, checkImageCache, modalImageLoading]);
+
+  // デバッグ用：プリロード状況を確認する関数
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
+      (window as any).debugPreload = () => {
+        console.log('=== Preload Debug Info ===');
+        console.log('Current modal index:', currentModalIndex);
+        console.log('Total photos:', photos.length);
+        console.log('Modal photo:', modalPhoto?.number);
+        
+        const indicesToPreload = [
+          currentModalIndex - 1,
+          currentModalIndex + 1
+        ].filter(i => i >= 0 && i < photos.length);
+        
+        console.log('Should preload indices:', indicesToPreload);
+        
+        indicesToPreload.forEach(i => {
+          const photo = photos[i];
+          const highResUrl = getHighResUrl(photo.storageUrl);
+          console.log(`Photo ${i}: ${photo.number}, URL: ${highResUrl}`);
+        });
+        console.log('========================');
+      };
+    }
+  }, [currentModalIndex, photos, modalPhoto]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -531,7 +485,7 @@ export const PhotoSelectPage: React.FC = () => {
         allPhotoOption={allPhotoOption}
       />
     ));
-  }, [photos, togglePhotoSelection, handlePhotoClick, allPhotoOption]); // selectedPhotosを依存配列から削除
+  }, [photos, selectedPhotos, togglePhotoSelection, handlePhotoClick, allPhotoOption]);
 
   if (loading) {
     return (
@@ -672,7 +626,7 @@ export const PhotoSelectPage: React.FC = () => {
         )}
       </div>
 
-      {/* ナビゲーション機能付きモーダル（元画像をウォーターマーク付きで表示） */}
+      {/* モーダル（WatermarkedImageに読み込みを任せる版） */}
       {modalPhoto && (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
           <div 
@@ -685,7 +639,7 @@ export const PhotoSelectPage: React.FC = () => {
             }}
           >
             
-            {/* 画像表示エリア（元画像 + ウォーターマーク） */}
+            {/* 画像表示エリア */}
             <div 
               className="relative flex items-center justify-center bg-gray-100 overflow-hidden"
               style={{ 
@@ -733,19 +687,10 @@ export const PhotoSelectPage: React.FC = () => {
                     <p className="text-lg font-medium text-gray-800 mb-2">画像の読み込みに失敗しました</p>
                     <button 
                       onClick={() => {
+                        // 再試行時もWatermarkedImageに任せるため、状態のリセットのみ
                         setModalImageError(false);
                         setModalImageLoading(true);
                         setModalImageProgress(0);
-                        const img = new Image();
-                        img.onload = () => {
-                          setModalImageLoading(false);
-                          setModalImageProgress(100);
-                        };
-                        img.onerror = () => {
-                          setModalImageLoading(false);
-                          setModalImageError(true);
-                        };
-                        img.src = getHighResUrl(modalPhoto.storageUrl);
                       }}
                       className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
                     >
@@ -755,6 +700,7 @@ export const PhotoSelectPage: React.FC = () => {
                 </div>
               )}
               
+              {/* WatermarkedImageコンポーネント（読み込み処理を一元化） */}
               <WatermarkedImage
                 src={getHighResUrl(modalPhoto.storageUrl)}
                 alt={`写真 ${modalPhoto.number}`}
@@ -764,6 +710,25 @@ export const PhotoSelectPage: React.FC = () => {
                   maxWidth: '100%', 
                   maxHeight: '100%',
                 }}
+                imageId={modalPhoto.id}
+                onLoadComplete={() => {
+                  console.log('🎉 onLoadComplete called for photo:', modalPhoto?.number, 'index:', currentModalIndex);
+                  setModalImageLoading(false);
+                  setModalImageProgress(100);
+                  setModalImageError(false);
+                  console.log('✅ Modal loading state cleared');
+                  // 画像読み込み完了後にプリロードを開始
+                  handleImageLoadComplete(currentModalIndex);
+                }}
+                onLoadError={() => {
+                  console.log('❌ onLoadError called for photo:', modalPhoto?.number, 'index:', currentModalIndex);
+                  setModalImageLoading(false);
+                  setModalImageError(true);
+                  console.log('✅ Modal loading state cleared due to error');
+                }}
+                hideInternalLoader={true}
+                externalLoading={modalImageLoading}
+                // モーダルでは高解像度画像なのでフォールバックは設定しない
               />
 
               {/* 前の写真ボタン */}
