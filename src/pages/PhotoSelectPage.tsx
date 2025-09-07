@@ -297,17 +297,31 @@ export const PhotoSelectPage: React.FC = () => {
       const imageCache = (window as any).imageCache;
       if (imageCache) {
         const cacheSize = imageCache.size;
+        console.log('🍎 Safari preload strategy check:', {
+          currentIndex,
+          cacheSize,
+          maxCacheSize: 20,
+          threshold80: 16,
+          threshold60: 12,
+          threshold40: 8
+        });
+        
         if (cacheSize > 16) { // 80% of 20
           preloadCount = 0; // メモリ不足時はプリロード停止
+          console.log('🚨 Safari: Emergency preload stop (80% threshold)');
         } else if (cacheSize > 12) { // 60% of 20
           preloadCount = 1; // 最小限
+          console.log('⚠️ Safari: Minimal preload (60% threshold)');
         } else if (cacheSize > 8) { // 40% of 20
           preloadCount = 2; // 中程度の制限
+          console.log('🧹 Safari: Moderate preload (40% threshold)');
         } else {
           preloadCount = 3; // 通常時
+          console.log('✅ Safari: Normal preload (<40% threshold)');
         }
       } else {
         preloadCount = 2; // フォールバック（より保守的に）
+        console.log('⚠️ Safari: Fallback preload (no cache info)');
       }
     }
     
@@ -388,6 +402,23 @@ export const PhotoSelectPage: React.FC = () => {
     const index = photos.findIndex(p => p.id === photo.id);
     console.log(`🖼️ Photo clicked: ${photo.number}, index: ${index}`);
     
+    // 詳細なデバッグ情報を出力
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    const imageCache = (window as any).imageCache;
+    
+    console.log('🔍 PHOTO CLICK DEBUG:', {
+      photoNumber: photo.number,
+      photoIndex: index,
+      totalPhotos: photos.length,
+      isSafari: isSafari,
+      isMobile: isMobile,
+      cacheSize: imageCache?.size || 0,
+      maxCacheSize: 20,
+      userAgent: navigator.userAgent,
+      storageUrl: photo.storageUrl
+    });
+    
     setCurrentModalIndex(index);
     setModalPhoto(photo);
     setModalImageKey(0); // リロードキーをリセット
@@ -410,7 +441,16 @@ export const PhotoSelectPage: React.FC = () => {
       const priorityLoadPromise = (window as any).loadImageWithPriority;
       if (priorityLoadPromise) {
         const highResUrl = getHighResUrl(photo.storageUrl);
-        priorityLoadPromise(highResUrl, `Photo ${photo.number}`)
+        
+        console.log('🔍 PRIORITY LOAD START DEBUG:', {
+          photoNumber: photo.number,
+          originalUrl: photo.storageUrl,
+          highResUrl: highResUrl,
+          alt: `写真 ${photo.number}`,
+          priorityLoadFunction: typeof priorityLoadPromise
+        });
+        
+        priorityLoadPromise(highResUrl, `写真 ${photo.number}`)
           .then(() => {
             console.log(`✅ Priority load completed for photo ${photo.number}`);
             // 優先ダウンロード完了後、表示を更新
@@ -419,9 +459,19 @@ export const PhotoSelectPage: React.FC = () => {
           })
           .catch((error: any) => {
             console.error(`❌ Priority load failed for photo ${photo.number}:`, error);
+            console.log('🔍 PRIORITY LOAD ERROR DEBUG:', {
+              photoNumber: photo.number,
+              error: error,
+              errorMessage: error?.message,
+              errorStack: error?.stack
+            });
             setModalImageError(true);
             setModalImageLoading(false);
           });
+      } else {
+        console.error('❌ Priority load function not available');
+        setModalImageError(true);
+        setModalImageLoading(false);
       }
     }
     

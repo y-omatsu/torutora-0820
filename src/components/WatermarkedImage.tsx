@@ -175,6 +175,17 @@ const preloadingImages = new Map<string, Promise<void>>();
 const loadImageWithPriority = (src: string, alt: string, fallbackSrc?: string) => {
   const cacheKey = getCacheKey(src, alt);
   
+  console.log('🔍 PRIORITY LOAD DEBUG START:', {
+    src,
+    alt,
+    cacheKey,
+    isSafari: isSafari,
+    isMobile: isMobile,
+    cacheSize: imageCache.size,
+    maxCacheSize: MAX_CACHE_SIZE,
+    memoryPressure: isSafari && isMobile ? 'Safari Mobile' : 'Other'
+  });
+  
   // 既にキャッシュされている場合は即座に返す
   if (imageCache.has(cacheKey)) {
     console.log('✅ Priority image already cached:', cacheKey);
@@ -191,12 +202,28 @@ const loadImageWithPriority = (src: string, alt: string, fallbackSrc?: string) =
   
   // 優先ダウンロード用のPromiseを作成
   const priorityPromise = new Promise<void>((resolve, reject) => {
+    console.log('🔧 Creating priority Promise for:', cacheKey);
     const img = new Image() as HTMLImageElement & { onloadCalled?: boolean; onerrorCalled?: boolean };
     img.crossOrigin = 'anonymous';
     
+    console.log('🖼️ Priority Image object created:', {
+      src: img.src,
+      crossOrigin: img.crossOrigin,
+      cacheKey
+    });
+    
     // 優先ダウンロード用：より短いタイムアウト
     const timeoutId = setTimeout(() => {
-      console.error('⏰ Priority load timeout for:', src);
+      console.error('⏰ Priority load timeout for:', src, 'after 8 seconds');
+      console.log('🔍 Timeout debug info:', {
+        imgComplete: img.complete,
+        imgNaturalWidth: img.naturalWidth,
+        imgNaturalHeight: img.naturalHeight,
+        imgSrc: img.src,
+        onloadCalled: img.onloadCalled,
+        onerrorCalled: img.onerrorCalled,
+        cacheKey
+      });
       if (!img.onloadCalled && !img.onerrorCalled) {
         img.onerrorCalled = true;
         img.onerror?.(new Event('error'));
@@ -204,6 +231,7 @@ const loadImageWithPriority = (src: string, alt: string, fallbackSrc?: string) =
     }, 8000); // 8秒でタイムアウト（プリロードより短い）
     
     img.onload = () => {
+      console.log('🎉 Priority onload event triggered for:', cacheKey);
       clearTimeout(timeoutId);
       
       if (img.onloadCalled) {
@@ -211,6 +239,14 @@ const loadImageWithPriority = (src: string, alt: string, fallbackSrc?: string) =
         return;
       }
       img.onloadCalled = true;
+      
+      console.log('🔍 Priority onload debug info:', {
+        imgComplete: img.complete,
+        imgNaturalWidth: img.naturalWidth,
+        imgNaturalHeight: img.naturalHeight,
+        imgSrc: img.src,
+        cacheKey
+      });
       
       try {
         // 優先ダウンロード用のCanvasを作成
@@ -318,6 +354,7 @@ const loadImageWithPriority = (src: string, alt: string, fallbackSrc?: string) =
     };
 
     img.onerror = () => {
+      console.log('❌ Priority onerror event triggered for:', cacheKey);
       clearTimeout(timeoutId);
       
       if (img.onerrorCalled) {
@@ -327,6 +364,13 @@ const loadImageWithPriority = (src: string, alt: string, fallbackSrc?: string) =
       img.onerrorCalled = true;
       
       console.error('Priority image loading error for:', src);
+      console.log('🔍 Priority onerror debug info:', {
+        imgComplete: img.complete,
+        imgNaturalWidth: img.naturalWidth,
+        imgNaturalHeight: img.naturalHeight,
+        imgSrc: img.src,
+        cacheKey
+      });
       
       // フォールバックがある場合はフォールバックを試す
       if (fallbackSrc && src !== fallbackSrc) {
@@ -343,18 +387,27 @@ const loadImageWithPriority = (src: string, alt: string, fallbackSrc?: string) =
     
     // Safari用：優先ダウンロード画像読み込み状況を定期的にチェック
     if (isSafari && isMobile) {
+      console.log('🍎 Safari: Starting priority polling check for:', cacheKey);
       const checkInterval = setInterval(() => {
+        console.log('🔍 Safari priority polling check:', {
+          imgComplete: img.complete,
+          imgNaturalWidth: img.naturalWidth,
+          imgNaturalHeight: img.naturalHeight,
+          imgSrc: img.src,
+          cacheKey
+        });
+        
         if (img.complete) {
           clearInterval(checkInterval);
           if (img.naturalWidth > 0 && img.naturalHeight > 0) {
             console.log('✅ Safari: Priority image loaded via polling check');
-            if (!img.onloadCalled) {
+            if (!img.onloadCalled && !img.onerrorCalled) {
               img.onloadCalled = true;
               img.onload?.(new Event('load'));
             }
           } else {
             console.log('❌ Safari: Priority image failed via polling check');
-            if (!img.onerrorCalled) {
+            if (!img.onloadCalled && !img.onerrorCalled) {
               img.onerrorCalled = true;
               img.onerror?.(new Event('error'));
             }
@@ -1053,14 +1106,14 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
           if (img.naturalWidth > 0 && img.naturalHeight > 0) {
             console.log('✅ Safari: Direct storage image loaded via polling check');
             // 手動でonloadを発火（既に発火済みの場合はスキップ）
-            if (!img.onloadCalled) {
+            if (!img.onloadCalled && !img.onerrorCalled) {
               img.onloadCalled = true;
               img.onload?.(new Event('load'));
             }
           } else {
             console.log('❌ Safari: Direct storage image failed via polling check');
             // 手動でonerrorを発火（既に発火済みの場合はスキップ）
-            if (!img.onerrorCalled) {
+            if (!img.onloadCalled && !img.onerrorCalled) {
               img.onerrorCalled = true;
               img.onerror?.(new Event('error'));
             }
