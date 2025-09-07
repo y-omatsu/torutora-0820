@@ -28,6 +28,7 @@ const cleanupOldCache = () => {
   const entries = Array.from(imageCache.entries());
   entries.sort((a, b) => a[1].timestamp - b[1].timestamp);
   
+  // 古い画像から削除（正しい順序）
   const toDelete = entries.slice(0, entries.length - MAX_CACHE_SIZE);
   toDelete.forEach(([key]) => {
     // キャンバスを明示的にクリアしてメモリを解放
@@ -41,7 +42,9 @@ const cleanupOldCache = () => {
     imageCache.delete(key);
   });
   
-  console.log(`🧹 Cache cleanup: removed ${toDelete.length} old images, current size: ${imageCache.size}`);
+  console.log(`🧹 Cache cleanup: removed ${toDelete.length} OLD images, current size: ${imageCache.size}`);
+  console.log(`🧹 Deleted keys:`, toDelete.map(([key]) => key));
+  console.log(`🧹 Deleted timestamps:`, toDelete.map(([key, value]) => ({ key, timestamp: new Date(value.timestamp).toLocaleString() })));
 };
 
 const getCacheKey = (src: string, alt: string): string => {
@@ -79,7 +82,7 @@ const checkMemoryPressure = () => {
       console.log('⚠️ Safari: Moderate cache cleanup');
       const entries = Array.from(imageCache.entries());
       entries.sort((a, b) => a[1].timestamp - b[1].timestamp);
-      const toDelete = entries.slice(0, Math.floor(entries.length * 0.4)); // 40%削除
+      const toDelete = entries.slice(0, Math.floor(entries.length * 0.4)); // 40%削除（古い画像から）
       
       toDelete.forEach(([key]) => {
         const cachedImage = imageCache.get(key);
@@ -92,12 +95,14 @@ const checkMemoryPressure = () => {
         imageCache.delete(key);
       });
       
-      console.log(`🧹 Safari: Moderate cleanup removed ${toDelete.length} images, current size: ${imageCache.size}`);
+      console.log(`🧹 Safari: Moderate cleanup removed ${toDelete.length} OLD images, current size: ${imageCache.size}`);
+      console.log(`🧹 Safari deleted keys:`, toDelete.map(([key]) => key));
+      console.log(`🧹 Safari deleted timestamps:`, toDelete.map(([key, value]) => ({ key, timestamp: new Date(value.timestamp).toLocaleString() })));
     } else if (currentSize > MAX_CACHE_SIZE * 0.5) { // 50%で軽いクリーンアップ
       console.log('🧹 Safari: Light cache cleanup');
       const entries = Array.from(imageCache.entries());
       entries.sort((a, b) => a[1].timestamp - b[1].timestamp);
-      const toDelete = entries.slice(0, Math.floor(entries.length * 0.2)); // 20%のみ削除
+      const toDelete = entries.slice(0, Math.floor(entries.length * 0.2)); // 20%のみ削除（古い画像から）
       
       toDelete.forEach(([key]) => {
         const cachedImage = imageCache.get(key);
@@ -110,7 +115,9 @@ const checkMemoryPressure = () => {
         imageCache.delete(key);
       });
       
-      console.log(`🧹 Safari: Light cleanup removed ${toDelete.length} images, current size: ${imageCache.size}`);
+      console.log(`🧹 Safari: Light cleanup removed ${toDelete.length} OLD images, current size: ${imageCache.size}`);
+      console.log(`🧹 Safari deleted keys:`, toDelete.map(([key]) => key));
+      console.log(`🧹 Safari deleted timestamps:`, toDelete.map(([key, value]) => ({ key, timestamp: new Date(value.timestamp).toLocaleString() })));
     }
   }
 };
@@ -560,6 +567,12 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
       isExpired: cached ? Date.now() - cached.timestamp > CACHE_EXPIRY_TIME : 'N/A',
       currentSrc
     });
+
+    // 削除された画像を表示しようとしている場合の特別処理
+    if (!cached) {
+      console.log('🚫 Image was deleted from cache, loading fresh from storage:', imageSrc);
+      console.log('💡 This might be due to memory cleanup - loading fresh image');
+    }
 
     // キャッシュがない場合は直接Storageから読み込み（キャッシュ保存なし）
     console.log('🔄 Loading directly from storage (no cache):', imageSrc);
