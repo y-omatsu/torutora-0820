@@ -764,11 +764,12 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
     }
   }, [alt, onLoadComplete, onLoadError, fallbackSrc, imageId, currentImageId]);
 
-  // srcが変更された時の初期化処理
+  // srcが変更された時の初期化処理と画像読み込みを統合
   useEffect(() => {
     console.log('🔄 Image src changed from', currentSrc, 'to', src, 'ImageId:', imageId);
     console.log('🔄 User Agent:', navigator.userAgent);
     console.log('🔄 Is Mobile:', /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent));
+    
     setCurrentSrc(src);
     setCurrentImageId(imageId);
     setIsLoading(true);
@@ -776,7 +777,11 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
     
     // 画像切り替え時は確実に読み込み状態をリセット
     console.log('🔄 Reset loading state for new image:', src);
-  }, [src, imageId]);
+    
+    // 新しい画像の読み込みを即座に開始
+    console.log('🖼️ Loading image for display:', src, 'ImageId:', imageId);
+    getCachedOrCreateImage(src);
+  }, [src, imageId, getCachedOrCreateImage]);
 
   // Safari用の画像読み込み完了検出（CSS版のみ）
   useEffect(() => {
@@ -809,12 +814,6 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
       img.src = currentSrc;
     }
   }, [currentSrc, useCssWatermark, fallbackSrc, onLoadComplete, onLoadError]);
-
-  // 画像読み込み実行（表示用）- 単一のuseEffectで管理
-  useEffect(() => {
-    console.log('🖼️ Loading image for display:', currentSrc, 'ImageId:', currentImageId);
-    getCachedOrCreateImage(currentSrc);
-  }, [currentSrc, getCachedOrCreateImage, currentImageId]);
 
   if (error) {
     return (

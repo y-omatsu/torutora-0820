@@ -293,6 +293,7 @@ export const PhotoSelectPage: React.FC = () => {
     // Safariモバイルではプリロード数を削減
     const preloadCount = (isSafari && isMobile) ? 3 : 5;
     
+    // 現在の画像（currentIndex）は含まず、次の画像からプリロード
     const indicesToPreload = Array.from({ length: preloadCount }, (_, i) => currentIndex + i + 1)
       .filter(i => i >= 0 && i < photos.length); // 範囲内のインデックスのみ
     
