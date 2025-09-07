@@ -472,12 +472,13 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
       }
       
       // タイムアウト時はエラーとして処理
+      console.log('❌ Timeout: Setting error state for:', imageSrc);
       setError(true);
       setIsLoading(false);
       if (onLoadError) {
         onLoadError();
       }
-    }, 10000); // 10秒でタイムアウト
+    }, 12000); // 12秒でタイムアウト（ポーリングより長く）
     
     img.onload = () => {
       clearTimeout(timeoutId); // タイムアウトをクリア
@@ -501,6 +502,7 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
         }
         
         img.alt = alt;
+        console.log('🎨 Starting canvas drawing for:', imageSrc, 'Dimensions:', img.width, 'x', img.height);
         
         // 最適なCanvas サイズを計算
         const { width: canvasWidth, height: canvasHeight } = getOptimalCanvasSize(img.width, img.height);
@@ -568,6 +570,7 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
         // キャッシュにない場合は直接表示のみ（キャッシュ保存なし）
         // これにより削除された画像も正常に表示される
         console.log('✅ Image loaded directly from storage (no cache):', imageSrc);
+        console.log('🎨 Canvas drawing completed, size:', canvasWidth, 'x', canvasHeight);
 
         // 古い画像の読み込み完了時は表示を更新しない
         if (imageId && currentImageId && imageId !== currentImageId) {
@@ -575,6 +578,7 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
           return;
         }
         
+        console.log('🔄 Setting loading state to false for:', imageSrc);
         setIsLoading(false);
         
         console.log('✅ Image load completed successfully:', imageSrc, 'ImageId:', imageId);
@@ -671,10 +675,18 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
         }
       }, 100); // 100msごとにチェック
       
-      // 5秒後にポーリングを停止
+      // 8秒後にポーリングを停止（タイムアウトより短く）
       setTimeout(() => {
         clearInterval(checkInterval);
-      }, 5000);
+        // ポーリング終了時、まだ読み込み完了していない場合はエラーとして処理
+        if (!img.onloadCalled && !img.onerrorCalled) {
+          console.log('⏰ Safari: Polling timeout, treating as error');
+          if (!img.onerrorCalled) {
+            img.onerrorCalled = true;
+            img.onerror?.(new Event('error'));
+          }
+        }
+      }, 8000);
     }
   }, [alt, onLoadComplete, onLoadError, fallbackSrc, imageId, currentImageId]);
 
