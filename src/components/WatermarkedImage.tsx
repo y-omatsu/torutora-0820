@@ -168,6 +168,223 @@ if (process.env.NODE_ENV === 'development') {
   // 画像キャッシュをグローバルに公開
   (window as any).imageCache = imageCache;
 
+// プリロード進行中の画像を追跡するMap
+const preloadingImages = new Map<string, Promise<void>>();
+
+// 優先ダウンロード用の画像読み込み関数
+const loadImageWithPriority = (src: string, alt: string, fallbackSrc?: string) => {
+  const cacheKey = getCacheKey(src, alt);
+  
+  // 既にキャッシュされている場合は即座に返す
+  if (imageCache.has(cacheKey)) {
+    console.log('✅ Priority image already cached:', cacheKey);
+    return Promise.resolve();
+  }
+  
+  // 既にプリロード中の場合はそのPromiseを返す
+  if (preloadingImages.has(cacheKey)) {
+    console.log('⏳ Priority image already preloading, using existing promise:', cacheKey);
+    return preloadingImages.get(cacheKey)!;
+  }
+  
+  console.log('🚀 Starting PRIORITY load for:', cacheKey, 'src:', src);
+  
+  // 優先ダウンロード用のPromiseを作成
+  const priorityPromise = new Promise<void>((resolve, reject) => {
+    const img = new Image() as HTMLImageElement & { onloadCalled?: boolean; onerrorCalled?: boolean };
+    img.crossOrigin = 'anonymous';
+    
+    // 優先ダウンロード用：より短いタイムアウト
+    const timeoutId = setTimeout(() => {
+      console.error('⏰ Priority load timeout for:', src);
+      if (!img.onloadCalled && !img.onerrorCalled) {
+        img.onerrorCalled = true;
+        img.onerror?.(new Event('error'));
+      }
+    }, 8000); // 8秒でタイムアウト（プリロードより短い）
+    
+    img.onload = () => {
+      clearTimeout(timeoutId);
+      
+      if (img.onloadCalled) {
+        console.log('🚫 Duplicate priority onload event, ignoring');
+        return;
+      }
+      img.onloadCalled = true;
+      
+      try {
+        // 優先ダウンロード用のCanvasを作成
+        const priorityCanvas = document.createElement('canvas');
+        const priorityCtx = priorityCanvas.getContext('2d');
+        if (!priorityCtx) {
+          reject(new Error('Failed to get priority canvas context'));
+          return;
+        }
+
+        // 最適なCanvas サイズを計算（優先ダウンロード用）
+        const MAX_CANVAS_DIMENSION = 1024; // 優先ダウンロード用
+        const MAX_CANVAS_AREA = 1024 * 1024; // 約1MB/画像に削減
+        
+        const getOptimalCanvasSize = (imgWidth: number, imgHeight: number) => {
+          let width = imgWidth;
+          let height = imgHeight;
+
+          // 寸法制限チェック
+          if (width > MAX_CANVAS_DIMENSION || height > MAX_CANVAS_DIMENSION) {
+            const ratio = Math.min(MAX_CANVAS_DIMENSION / width, MAX_CANVAS_DIMENSION / height);
+            width = Math.floor(width * ratio);
+            height = Math.floor(height * ratio);
+          }
+
+          // 総面積制限チェック
+          if (width * height > MAX_CANVAS_AREA) {
+            const ratio = Math.sqrt(MAX_CANVAS_AREA / (width * height));
+            width = Math.floor(width * ratio);
+            height = Math.floor(height * ratio);
+          }
+
+          return { width, height };
+        };
+        
+        const { width: canvasWidth, height: canvasHeight } = getOptimalCanvasSize(img.width, img.height);
+        
+        priorityCanvas.width = canvasWidth;
+        priorityCanvas.height = canvasHeight;
+
+        // 画像を描画
+        priorityCtx.drawImage(img, 0, 0, canvasWidth, canvasHeight);
+
+        // ウォーターマークを描画（表示用と同じ処理）
+        priorityCtx.font = `bold ${Math.max(canvasWidth * 0.05, 24)}px serif`;
+        priorityCtx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+        priorityCtx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+        priorityCtx.lineWidth = 3;
+        priorityCtx.textAlign = 'center';
+
+        // ウォーターマークの配置計算
+        const watermarkText = 'ToruTora';
+        const angle = -Math.PI / 6; // -30度
+        const textWidth = priorityCtx.measureText(watermarkText + '     ').width;
+        const lineSpacing = Math.max(canvasHeight * 0.15, 80);
+        
+        const diagonal = Math.sqrt(canvasWidth * canvasWidth + canvasHeight * canvasHeight);
+        const numLines = Math.ceil(diagonal / lineSpacing) + 6;
+        
+        for (let lineIndex = -Math.floor(numLines / 2); lineIndex <= Math.floor(numLines / 2); lineIndex++) {
+          const centerX = canvasWidth / 2;
+          const centerY = canvasHeight / 2;
+          const offsetX = lineIndex * lineSpacing * Math.cos(angle + Math.PI / 2);
+          const offsetY = lineIndex * lineSpacing * Math.sin(angle + Math.PI / 2);
+          
+          const lineLength = diagonal * 1.5;
+          const textCount = Math.floor(lineLength / textWidth) + 2;
+          
+          for (let textIndex = 0; textIndex < textCount; textIndex++) {
+            const progress = (textIndex - textCount / 2) / textCount;
+            const x = centerX + offsetX + progress * lineLength * Math.cos(angle);
+            const y = centerY + offsetY + progress * lineLength * Math.sin(angle);
+            
+            if (x >= -100 && x <= canvasWidth + 100 && y >= -100 && y <= canvasHeight + 100) {
+              priorityCtx.save();
+              priorityCtx.translate(x, y);
+              priorityCtx.rotate(angle);
+              priorityCtx.strokeText(watermarkText, 0, 0);
+              priorityCtx.fillText(watermarkText, 0, 0);
+              priorityCtx.restore();
+            }
+          }
+        }
+
+        // キャッシュに保存
+        imageCache.set(cacheKey, {
+          canvas: priorityCanvas,
+          timestamp: Date.now()
+        });
+        
+        // キャッシュクリーンアップ
+        cleanupExpiredCache();
+        cleanupOldCache();
+        
+        console.log('✅ Priority image loaded and cached:', cacheKey, 'Size:', canvasWidth, 'x', canvasHeight);
+        
+        // プリロードMapから削除
+        preloadingImages.delete(cacheKey);
+        resolve();
+      } catch (err) {
+        console.error('Priority canvas drawing error:', err);
+        preloadingImages.delete(cacheKey);
+        reject(err);
+      }
+    };
+
+    img.onerror = () => {
+      clearTimeout(timeoutId);
+      
+      if (img.onerrorCalled) {
+        console.log('🚫 Duplicate priority onerror event, ignoring');
+        return;
+      }
+      img.onerrorCalled = true;
+      
+      console.error('Priority image loading error for:', src);
+      
+      // フォールバックがある場合はフォールバックを試す
+      if (fallbackSrc && src !== fallbackSrc) {
+        console.log('Trying fallback for priority load:', fallbackSrc);
+        loadImageWithPriority(fallbackSrc, alt).then(resolve).catch(reject);
+        return;
+      }
+      
+      preloadingImages.delete(cacheKey);
+      reject(new Error(`Failed to load priority image: ${src}`));
+    };
+
+    img.src = src;
+    
+    // Safari用：優先ダウンロード画像読み込み状況を定期的にチェック
+    if (isSafari && isMobile) {
+      const checkInterval = setInterval(() => {
+        if (img.complete) {
+          clearInterval(checkInterval);
+          if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+            console.log('✅ Safari: Priority image loaded via polling check');
+            if (!img.onloadCalled) {
+              img.onloadCalled = true;
+              img.onload?.(new Event('load'));
+            }
+          } else {
+            console.log('❌ Safari: Priority image failed via polling check');
+            if (!img.onerrorCalled) {
+              img.onerrorCalled = true;
+              img.onerror?.(new Event('error'));
+            }
+          }
+        }
+      }, 50); // より頻繁にチェック（50ms）
+      
+      // 6秒後にポーリングを停止（プリロードより短い）
+      setTimeout(() => {
+        clearInterval(checkInterval);
+        if (!img.onloadCalled && !img.onerrorCalled) {
+          console.log('⏰ Safari: Priority polling timeout, treating as error');
+          if (!img.onerrorCalled) {
+            img.onerrorCalled = true;
+            img.onerror?.(new Event('error'));
+          }
+        }
+      }, 6000);
+    }
+  });
+  
+  // 優先ダウンロードPromiseをMapに保存
+  preloadingImages.set(cacheKey, priorityPromise);
+  
+  return priorityPromise;
+};
+
+// 優先ダウンロード関数をグローバルに公開
+(window as any).loadImageWithPriority = loadImageWithPriority;
+
 // 画像プリロード関数（表示に影響しない完全独立した処理）
 const preloadImage = (src: string, alt: string, fallbackSrc?: string) => {
   const cacheKey = getCacheKey(src, alt);
@@ -176,6 +393,12 @@ const preloadImage = (src: string, alt: string, fallbackSrc?: string) => {
   if (imageCache.has(cacheKey)) {
     console.log('Image already cached, skipping preload:', cacheKey);
     return Promise.resolve();
+  }
+  
+  // 既にプリロード中の場合は同じPromiseを返す
+  if (preloadingImages.has(cacheKey)) {
+    console.log('Image already preloading, returning existing promise:', cacheKey);
+    return preloadingImages.get(cacheKey)!;
   }
 
   console.log('🔄 Starting preload for:', cacheKey, 'src:', src);
@@ -212,7 +435,7 @@ const preloadImage = (src: string, alt: string, fallbackSrc?: string) => {
     return url;
   };
 
-  return new Promise<void>((resolve, reject) => {
+  const preloadPromise = new Promise<void>((resolve, reject) => {
     const img = new Image() as HTMLImageElement & { onloadCalled?: boolean; onerrorCalled?: boolean };
     img.crossOrigin = 'anonymous';
     
@@ -325,6 +548,9 @@ const preloadImage = (src: string, alt: string, fallbackSrc?: string) => {
           canvasSize: `${canvasWidth}x${canvasHeight}`,
           totalCacheSize: imageCache.size
         });
+        
+        // プリロード完了時にMapから削除
+        preloadingImages.delete(cacheKey);
         resolve();
       } catch (err) {
         console.error('Preload canvas drawing error:', err);
@@ -352,6 +578,8 @@ const preloadImage = (src: string, alt: string, fallbackSrc?: string) => {
         return;
       }
       
+      // プリロード失敗時もMapから削除
+      preloadingImages.delete(cacheKey);
       reject(new Error(`Failed to load image: ${src}`));
     };
 
@@ -394,6 +622,11 @@ const preloadImage = (src: string, alt: string, fallbackSrc?: string) => {
       }, 8000);
     }
   });
+  
+  // プリロードPromiseをMapに保存
+  preloadingImages.set(cacheKey, preloadPromise);
+  
+  return preloadPromise;
 };
 
 interface WatermarkedImageProps {
@@ -573,6 +806,21 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
       console.log('🚫 Image was deleted from cache, loading fresh from storage:', imageSrc);
       console.log('💡 This might be due to memory cleanup - loading fresh image');
       
+      // プリロード途中の画像かチェック
+      if (preloadingImages.has(cacheKey)) {
+        console.log('⏳ Image is currently preloading, waiting for completion:', cacheKey);
+        preloadingImages.get(cacheKey)!.then(() => {
+          console.log('✅ Preload completed, retrying display:', cacheKey);
+          // プリロード完了後に再試行
+          getCachedOrCreateImage(imageSrc, isFallback);
+        }).catch((error) => {
+          console.error('❌ Preload failed, falling back to direct load:', error);
+          // プリロード失敗時は直接読み込み
+          loadImageDirectly();
+        });
+        return;
+      }
+      
       // Safari用：メモリ不足時の特別処理
       if (isSafari && isMobile) {
         console.log('🍎 Safari: Memory pressure detected, using aggressive cleanup');
@@ -596,8 +844,9 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
       }
     }
 
-    // キャッシュがない場合は直接Storageから読み込み（キャッシュ保存なし）
-    console.log('🔄 Loading directly from storage (no cache):', imageSrc);
+    // 直接読み込み関数を定義
+    const loadImageDirectly = () => {
+      console.log('🔄 Loading directly from storage (no cache):', imageSrc);
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -832,6 +1081,10 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
         }
       }, 8000);
     }
+    };
+    
+    // 直接読み込みを実行
+    loadImageDirectly();
   }, [alt, onLoadComplete, onLoadError, fallbackSrc, imageId, currentImageId]);
 
   // srcが変更された時の初期化処理と画像読み込みを統合
