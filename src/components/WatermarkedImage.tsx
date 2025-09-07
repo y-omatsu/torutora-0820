@@ -868,8 +868,10 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
           console.log('⏰ Preload wait timeout, but keeping preload active:', cacheKey);
           // プリロードは継続させるが、表示用に直接読み込みも開始
           console.log('🔄 Starting parallel direct load while preload continues:', cacheKey);
-          // 再帰呼び出しで直接読み込みを開始
-          getCachedOrCreateImage(imageSrc, isFallback);
+          // プリロードを無視して直接読み込みに進む（無限ループを防ぐ）
+          console.log('🚀 Bypassing preload wait, proceeding to direct load');
+          // 直接読み込み処理を実行
+          loadImageDirectly();
         }, 5000);
         
         preloadingImages.get(cacheKey)!.then(() => {
@@ -881,7 +883,8 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
           clearTimeout(preloadTimeout);
           console.error('❌ Preload failed, falling back to direct load:', error);
           // プリロード失敗時は直接読み込み
-          getCachedOrCreateImage(imageSrc, isFallback);
+          console.log('🚀 Preload failed, proceeding to direct load');
+          loadImageDirectly();
         });
         return;
       }
