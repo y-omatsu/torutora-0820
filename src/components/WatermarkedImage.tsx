@@ -546,6 +546,38 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
     }
   }, [src, imageId, getCachedOrCreateImage]);
 
+  // Safari用の画像読み込み完了検出（CSS版のみ）
+  useEffect(() => {
+    if (useCssWatermark && currentSrc) {
+      console.log('🔍 Safari image load detection for:', currentSrc);
+      
+      // 画像が既に読み込まれている場合の検出
+      const img = new Image();
+      img.onload = () => {
+        console.log('✅ Safari pre-check: Image already loaded:', currentSrc);
+        setIsLoading(false);
+        setError(false);
+        if (onLoadComplete) {
+          onLoadComplete();
+        }
+      };
+      img.onerror = () => {
+        console.log('❌ Safari pre-check: Image load failed:', currentSrc);
+        if (fallbackSrc && currentSrc !== fallbackSrc) {
+          console.log('Trying fallback for Safari pre-check:', fallbackSrc);
+          setCurrentSrc(fallbackSrc);
+        } else {
+          setError(true);
+          setIsLoading(false);
+          if (onLoadError) {
+            onLoadError();
+          }
+        }
+      };
+      img.src = currentSrc;
+    }
+  }, [currentSrc, useCssWatermark, fallbackSrc, onLoadComplete, onLoadError]);
+
   // 画像読み込み実行（表示用）
   useEffect(() => {
     console.log('🖼️ Loading image for display:', currentSrc, 'ImageId:', currentImageId);
@@ -579,7 +611,8 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
           style={{ 
             display: isLoading ? 'none' : 'block',
             opacity: externalLoading ? 0.3 : 1,
-            transition: 'opacity 0.3s ease'
+            transition: 'opacity 0.3s ease',
+            visibility: isLoading ? 'hidden' : 'visible'
           }}
           onLoad={() => {
             console.log('✅ CSS Image loaded:', currentSrc, 'FallbackSrc:', fallbackSrc);
@@ -602,6 +635,9 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
                 onLoadError();
               }
             }
+          }}
+          onLoadStart={() => {
+            console.log('🔄 CSS Image load started:', currentSrc);
           }}
         />
         {/* CSSウォーターマーク - 一覧画面用 */}
