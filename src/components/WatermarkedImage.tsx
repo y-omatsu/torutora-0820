@@ -375,9 +375,21 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
     // リロードボタン用：キャッシュを無視して強制再読み込み
     const isReload = imageSrc.includes('?t=');
     if (isReload) {
-      console.log('🔄 Reload detected, bypassing cache');
+      console.log('🔄 Reload detected, bypassing cache for:', imageSrc);
       const cacheKey = getCacheKey(imageSrc, alt);
       imageCache.delete(cacheKey); // キャッシュを削除
+      
+      // Safari用：関連するキャッシュも削除
+      if (isSafari && isMobile) {
+        console.log('🧹 Safari: Clearing all related cache entries for reload');
+        const baseUrl = imageSrc.split('?')[0]; // タイムスタンプを除去
+        for (const [key] of imageCache.entries()) {
+          if (key.includes(baseUrl) && key.includes(alt)) {
+            imageCache.delete(key);
+            console.log('🗑️ Safari: Cleared related cache for reload:', key);
+          }
+        }
+      }
     }
     
     const cacheKey = getCacheKey(imageSrc, alt);

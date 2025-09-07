@@ -709,24 +709,58 @@ export const PhotoSelectPage: React.FC = () => {
                 <button
                   onClick={() => {
                     console.log('🔄 Manual reload requested for photo:', modalPhoto?.number);
+                    console.log('🔄 Current modalImageKey:', modalImageKey);
+                    
+                    // 状態を完全にリセット
                     setModalImageError(false);
                     setModalImageLoading(true);
                     setModalImageProgress(0);
                     
-                    // キャッシュを完全にクリア
+                    // キャッシュを完全にクリア（複数のパターンでクリア）
                     if (modalPhoto) {
                       const highResUrl = getHighResUrl(modalPhoto.storageUrl);
-                      const cacheKey = `${highResUrl}|写真 ${modalPhoto.number}`;
+                      const baseCacheKey = `${highResUrl}|写真 ${modalPhoto.number}`;
                       const imageCache = (window as any).imageCache;
+                      
                       if (imageCache) {
-                        imageCache.delete(cacheKey);
-                        console.log('🗑️ Cache cleared for:', cacheKey);
+                        // 基本のキャッシュキーを削除
+                        imageCache.delete(baseCacheKey);
+                        console.log('🗑️ Cache cleared for base key:', baseCacheKey);
+                        
+                        // タイムスタンプ付きのキャッシュキーも削除（念のため）
+                        const timestampedUrl = `${highResUrl}?t=${Date.now()}`;
+                        const timestampedCacheKey = `${timestampedUrl}|写真 ${modalPhoto.number}`;
+                        imageCache.delete(timestampedCacheKey);
+                        console.log('🗑️ Cache cleared for timestamped key:', timestampedCacheKey);
+                        
+                        // Safari用：古いキャッシュもクリア
+                        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+                        if (isSafari) {
+                          console.log('🧹 Safari: Clearing all related cache entries');
+                          // 同じ写真番号のキャッシュを全て削除
+                          for (const [key] of imageCache.entries()) {
+                            if (key.includes(`写真 ${modalPhoto.number}`)) {
+                              imageCache.delete(key);
+                              console.log('🗑️ Safari: Cleared related cache:', key);
+                            }
+                          }
+                        }
+                        
+                        console.log('📊 Cache size after clear:', imageCache.size);
                       }
                     }
                     
                     // 強制的に画像を再読み込み（keyを変更してコンポーネントを再マウント）
-                    setModalImageKey(prev => prev + 1);
-                    console.log('🔄 Reload triggered, key updated to:', modalImageKey + 1);
+                    const newKey = modalImageKey + 1;
+                    setModalImageKey(newKey);
+                    console.log('🔄 Reload triggered, key updated to:', newKey);
+                    
+                    // Safari用：強制メモリクリーンアップ
+                    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+                    if (isSafari && (window as any).forceSafariCleanup) {
+                      console.log('🧹 Safari: Force cleanup triggered');
+                      (window as any).forceSafariCleanup();
+                    }
                   }}
                   className="bg-gray-400 bg-opacity-70 text-white rounded-full w-10 h-10 flex items-center justify-center hover:bg-opacity-90 transition-all"
                   title="再読み込み"
