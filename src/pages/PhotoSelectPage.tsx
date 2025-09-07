@@ -58,10 +58,18 @@ const getOptimalImageUrl = (originalUrl: string): { src: string; fallbackSrc?: s
   }
 };
 
-// 高解像度画像URL取得関数（元画像のまま、品質のみ調整）
+// デバイス検出関数
+const isMobile = () => {
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+};
+
+// 高解像度画像URL取得関数（デバイスに応じて最適化）
 const getHighResUrl = (url: string): string => {
   if (url.includes('firebasestorage.googleapis.com')) {
-    return url.includes('?') ? `${url}&quality=10&w=200` : `${url}?quality=10&w=200`;
+    const isMobileDevice = isMobile();
+    const quality = isMobileDevice ? 5 : 10; // モバイルはより低品質
+    const width = isMobileDevice ? 150 : 200; // モバイルはより小さいサイズ
+    return url.includes('?') ? `${url}&quality=${quality}&w=${width}` : `${url}?quality=${quality}&w=${width}`;
   }
   return url;
 };
@@ -264,15 +272,17 @@ export const PhotoSelectPage: React.FC = () => {
     return false;
   }, []);
 
-  // 画像プリロード関数（前後1枚ずつ）
+  // 画像プリロード関数（前後2枚ずつ）
   const preloadAdjacentImages = useCallback((currentIndex: number) => {
     console.log(`🚀 Starting preload for index ${currentIndex}, total photos: ${photos.length}`);
     const preloadPromises: Promise<void>[] = [];
     
-    // 前後1枚ずつプリロード（モーダル用の高解像度画像）
+    // 前後2枚ずつプリロード（モーダル用の高解像度画像）
     const indicesToPreload = [
+      currentIndex - 2, // 前の前の画像
       currentIndex - 1, // 前の画像
-      currentIndex + 1  // 次の画像
+      currentIndex + 1, // 次の画像
+      currentIndex + 2  // 次の次の画像
     ].filter(i => i >= 0 && i < photos.length); // 範囲内のインデックスのみ
     
     console.log(`📋 Indices to preload:`, indicesToPreload);
@@ -420,8 +430,10 @@ export const PhotoSelectPage: React.FC = () => {
         console.log('Modal photo:', modalPhoto?.number);
         
         const indicesToPreload = [
+          currentModalIndex - 2,
           currentModalIndex - 1,
-          currentModalIndex + 1
+          currentModalIndex + 1,
+          currentModalIndex + 2
         ].filter(i => i >= 0 && i < photos.length);
         
         console.log('Should preload indices:', indicesToPreload);
