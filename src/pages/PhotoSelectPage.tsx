@@ -72,6 +72,7 @@ const getHighResUrl = (url: string): string => {
     const quality = isMobileDevice ? 5 : 10; // モバイルはより低品質
     const width = isMobileDevice ? 150 : 200; // モバイルはより小さいサイズ
     return url.includes('?') ? `${url}&quality=${quality}&w=${width}` : `${url}?quality=${quality}&w=${width}`;
+    
   }
   return url;
 };
@@ -144,7 +145,7 @@ const LazyPhotoCard: React.FC<{
                   className="w-full h-full"
                   objectFit="cover"
                   fallbackSrc={fallbackSrc}
-                  useCssWatermark={false}
+                  useCssWatermark={true}
                 />
               );
             })()
