@@ -505,7 +505,7 @@ const preloadImage = (src: string, alt: string, fallbackSrc?: string) => {
       clearTimeout(timeoutId);
       
       // 重複発火を防ぐ
-      if (img.onloadCalled) {
+      if (img.onloadCalled || img.onerrorCalled) {
         console.log('🚫 Duplicate preload onload event, ignoring');
         return;
       }
@@ -615,7 +615,7 @@ const preloadImage = (src: string, alt: string, fallbackSrc?: string) => {
       clearTimeout(timeoutId);
       
       // 重複発火を防ぐ
-      if (img.onerrorCalled) {
+      if (img.onloadCalled || img.onerrorCalled) {
         console.log('🚫 Duplicate preload onerror event, ignoring');
         return;
       }
@@ -862,11 +862,21 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
       // プリロード途中の画像かチェック
       if (preloadingImages.has(cacheKey)) {
         console.log('⏳ Image is currently preloading, waiting for completion:', cacheKey);
+        
+        // プリロード待機のタイムアウト処理（3秒でタイムアウト）
+        const preloadTimeout = setTimeout(() => {
+          console.log('⏰ Preload wait timeout, falling back to direct load:', cacheKey);
+          preloadingImages.delete(cacheKey);
+          loadImageDirectly();
+        }, 3000);
+        
         preloadingImages.get(cacheKey)!.then(() => {
+          clearTimeout(preloadTimeout);
           console.log('✅ Preload completed, retrying display:', cacheKey);
           // プリロード完了後に再試行
           getCachedOrCreateImage(imageSrc, isFallback);
         }).catch((error) => {
+          clearTimeout(preloadTimeout);
           console.error('❌ Preload failed, falling back to direct load:', error);
           // プリロード失敗時は直接読み込み
           loadImageDirectly();
