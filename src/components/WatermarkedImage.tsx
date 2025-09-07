@@ -125,6 +125,9 @@ if (process.env.NODE_ENV === 'development') {
     }
     console.log('===============================');
   };
+  
+  // 画像キャッシュをグローバルに公開
+  (window as any).imageCache = imageCache;
 
 // 画像プリロード関数（表示に影響しない完全独立した処理）
 const preloadImage = (src: string, alt: string, fallbackSrc?: string) => {

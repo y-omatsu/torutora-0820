@@ -372,6 +372,7 @@ export const PhotoSelectPage: React.FC = () => {
     
     setCurrentModalIndex(index);
     setModalPhoto(photo);
+    setModalImageKey(0); // リロードキーをリセット
     
     // キャッシュをチェック
     const isCached = checkImageCache(photo);
@@ -405,6 +406,7 @@ export const PhotoSelectPage: React.FC = () => {
       // 画像とインデックスを更新
       setCurrentModalIndex(newIndex);
       setModalPhoto(newPhoto);
+      setModalImageKey(0); // リロードキーをリセット
       
       // キャッシュをチェック
       const isCached = checkImageCache(newPhoto);
@@ -448,6 +450,7 @@ export const PhotoSelectPage: React.FC = () => {
       // 画像とインデックスを更新
       setCurrentModalIndex(newIndex);
       setModalPhoto(newPhoto);
+      setModalImageKey(0); // リロードキーをリセット
       
       // キャッシュをチェック
       const isCached = checkImageCache(newPhoto);
