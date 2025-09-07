@@ -280,14 +280,15 @@ export const PhotoSelectPage: React.FC = () => {
     console.log(`🚀 Starting preload for index ${currentIndex}, total photos: ${photos.length}`);
     const preloadPromises: Promise<void>[] = [];
     
-    // プラス5枚のみプリロード（モーダル用の高解像度画像）
-    const indicesToPreload = [
-      currentIndex + 1, // 次の画像
-      currentIndex + 2, // 次の次の画像
-      currentIndex + 3, // 次の次の次の画像
-      currentIndex + 4, // 次の次の次の次の画像
-      currentIndex + 5  // 次の次の次の次の次の画像
-    ].filter(i => i >= 0 && i < photos.length); // 範囲内のインデックスのみ
+    // デバイスに応じたプリロード戦略
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    
+    // Safariモバイルではプリロード数を削減
+    const preloadCount = (isSafari && isMobile) ? 3 : 5;
+    
+    const indicesToPreload = Array.from({ length: preloadCount }, (_, i) => currentIndex + i + 1)
+      .filter(i => i >= 0 && i < photos.length); // 範囲内のインデックスのみ
     
     console.log(`📋 Indices to preload:`, indicesToPreload);
     
@@ -433,13 +434,12 @@ export const PhotoSelectPage: React.FC = () => {
         console.log('Total photos:', photos.length);
         console.log('Modal photo:', modalPhoto?.number);
         
-        const indicesToPreload = [
-          currentModalIndex + 1,
-          currentModalIndex + 2,
-          currentModalIndex + 3,
-          currentModalIndex + 4,
-          currentModalIndex + 5
-        ].filter(i => i >= 0 && i < photos.length);
+        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        const preloadCount = (isSafari && isMobile) ? 3 : 5;
+        
+        const indicesToPreload = Array.from({ length: preloadCount }, (_, i) => currentModalIndex + i + 1)
+          .filter(i => i >= 0 && i < photos.length);
         
         console.log('Should preload indices:', indicesToPreload);
         

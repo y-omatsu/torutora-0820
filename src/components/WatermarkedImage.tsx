@@ -8,8 +8,8 @@ interface CachedImage {
 
 // グローバル画像キャッシュ（メモリ内）
 const imageCache = new Map<string, CachedImage>();
-const CACHE_EXPIRY_TIME = 30 * 60 * 1000; // 30分でキャッシュ期限切れ
-const MAX_CACHE_SIZE = 50; // 最大50枚までキャッシュ
+const CACHE_EXPIRY_TIME = 60 * 60 * 1000; // 60分でキャッシュ期限切れ
+const MAX_CACHE_SIZE = 100; // 最大100枚までキャッシュ（Safari対応）
 
 // キャッシュ管理関数
 const cleanupExpiredCache = () => {
@@ -29,7 +29,19 @@ const cleanupOldCache = () => {
   entries.sort((a, b) => a[1].timestamp - b[1].timestamp);
   
   const toDelete = entries.slice(0, entries.length - MAX_CACHE_SIZE);
-  toDelete.forEach(([key]) => imageCache.delete(key));
+  toDelete.forEach(([key]) => {
+    // キャンバスを明示的にクリアしてメモリを解放
+    const cachedImage = imageCache.get(key);
+    if (cachedImage) {
+      const ctx = cachedImage.canvas.getContext('2d');
+      if (ctx) {
+        ctx.clearRect(0, 0, cachedImage.canvas.width, cachedImage.canvas.height);
+      }
+    }
+    imageCache.delete(key);
+  });
+  
+  console.log(`🧹 Cache cleanup: removed ${toDelete.length} old images, current size: ${imageCache.size}`);
 };
 
 const getCacheKey = (src: string, alt: string): string => {
@@ -45,6 +57,26 @@ const getCacheStats = () => {
   };
 };
 
+// Safari用メモリ管理
+const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+// メモリ圧迫検出とガベージコレクション
+const checkMemoryPressure = () => {
+  if (isSafari && isMobile) {
+    // Safariモバイルではより積極的にキャッシュをクリーンアップ
+    if (imageCache.size > MAX_CACHE_SIZE * 0.8) {
+      console.log('⚠️ Memory pressure detected, cleaning up cache');
+      cleanupOldCache();
+      
+      // 強制ガベージコレクション（Safari用）
+      if (window.gc) {
+        window.gc();
+      }
+    }
+  }
+};
+
 // デバッグ用：キャッシュ統計をコンソールに出力
 if (process.env.NODE_ENV === 'development') {
   setInterval(() => {
@@ -52,6 +84,7 @@ if (process.env.NODE_ENV === 'development') {
     if (stats.size > 0) {
       console.log('Image Cache Stats:', stats);
     }
+    checkMemoryPressure();
   }, 30000); // 30秒ごとに統計を出力
   
   // キャッシュの内容を詳細表示する関数
@@ -313,6 +346,10 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
   // キャッシュから画像を取得または新規作成
   const getCachedOrCreateImage = useCallback((imageSrc: string, isFallback = false) => {
     console.log('🔍 getCachedOrCreateImage called for:', imageSrc, 'ImageId:', imageId, 'CurrentImageId:', currentImageId);
+    
+    // Safari用メモリ圧迫チェック
+    checkMemoryPressure();
+    
     const cacheKey = getCacheKey(imageSrc, alt);
     const cached = imageCache.get(cacheKey);
     
