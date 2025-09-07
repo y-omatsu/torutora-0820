@@ -462,7 +462,24 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
     const img = new Image();
     img.crossOrigin = 'anonymous';
     
+    // Safari用：タイムアウト処理を追加
+    const timeoutId = setTimeout(() => {
+      console.error('⏰ Image load timeout for:', imageSrc);
+      if (imageId && currentImageId && imageId !== currentImageId) {
+        console.log('🚫 Ignoring timeout for outdated image:', imageId, 'Current:', currentImageId);
+        return;
+      }
+      
+      // タイムアウト時はエラーとして処理
+      setError(true);
+      setIsLoading(false);
+      if (onLoadError) {
+        onLoadError();
+      }
+    }, 10000); // 10秒でタイムアウト
+    
     img.onload = () => {
+      clearTimeout(timeoutId); // タイムアウトをクリア
       try {
         console.log('🖼️ Image onload triggered for:', imageSrc, 'ImageId:', imageId, 'CurrentImageId:', currentImageId);
         console.log('🖼️ Image dimensions:', img.width, 'x', img.height);
@@ -588,6 +605,7 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
     };
 
     img.onerror = (error) => {
+      clearTimeout(timeoutId); // タイムアウトをクリア
       console.error('Image loading error for:', imageSrc);
       console.error('Error details:', error);
       console.error('User Agent:', navigator.userAgent);
@@ -627,6 +645,28 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
 
     console.log('🚀 Starting image load for:', imageSrc, 'ImageId:', imageId);
     img.src = getLowResUrl(imageSrc);
+    
+    // Safari用：画像読み込み状況を定期的にチェック
+    if (isSafari && isMobile) {
+      const checkInterval = setInterval(() => {
+        if (img.complete) {
+          clearInterval(checkInterval);
+          if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+            console.log('✅ Safari: Image loaded via polling check');
+            // 手動でonloadを発火
+            img.onload?.(new Event('load'));
+          } else {
+            console.log('❌ Safari: Image failed via polling check');
+            img.onerror?.(new Event('error'));
+          }
+        }
+      }, 100); // 100msごとにチェック
+      
+      // 5秒後にポーリングを停止
+      setTimeout(() => {
+        clearInterval(checkInterval);
+      }, 5000);
+    }
   }, [alt, onLoadComplete, onLoadError, fallbackSrc, imageId, currentImageId]);
 
   // srcが変更された時の初期化処理

@@ -802,8 +802,10 @@ export const PhotoSelectPage: React.FC = () => {
                 key={`${modalPhoto.id}-${modalImageKey}`} // 強制再読み込み用のkey
                 src={(() => {
                   const url = getHighResUrl(modalPhoto.storageUrl);
-                  console.log(`🖼️ Displaying image ${modalPhoto.number}, src: ${url}`);
-                  return url;
+                  // リロード時はタイムスタンプを追加
+                  const finalUrl = modalImageKey > 0 ? `${url}?t=${Date.now()}` : url;
+                  console.log(`🖼️ Displaying image ${modalPhoto.number}, src: ${finalUrl}, reloadKey: ${modalImageKey}`);
+                  return finalUrl;
                 })()}
                 alt={`写真 ${modalPhoto.number}`}
                 className="max-w-full max-h-full"
