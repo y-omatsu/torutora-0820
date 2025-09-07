@@ -61,24 +61,56 @@ const getCacheStats = () => {
 const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
 const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
-// メモリ圧迫検出とガベージコレクション
+// 動的メモリ管理（Safari用）
 const checkMemoryPressure = () => {
   if (isSafari && isMobile) {
-    // Safariモバイルではより積極的にキャッシュをクリーンアップ
-    if (imageCache.size > MAX_CACHE_SIZE * 0.6) { // 60%でクリーンアップ開始
-      console.log('⚠️ Memory pressure detected, cleaning up cache');
+    const currentSize = imageCache.size;
+    
+    // 段階的なメモリ管理（固定制限ではなく動的）
+    if (currentSize > MAX_CACHE_SIZE * 0.9) { // 90%で緊急クリーンアップ
+      console.log('🚨 Safari: Emergency cache cleanup');
       cleanupOldCache();
       
-      // 強制ガベージコレクション（Safari用）
+      // 強制ガベージコレクション
       if (window.gc) {
         window.gc();
       }
-    }
-    
-    // Safari用：定期的に古いキャッシュを削除
-    if (imageCache.size > 20) { // 20枚を超えたら積極的にクリーンアップ
-      console.log('🧹 Safari: Proactive cache cleanup');
-      cleanupOldCache();
+    } else if (currentSize > MAX_CACHE_SIZE * 0.7) { // 70%で中程度のクリーンアップ
+      console.log('⚠️ Safari: Moderate cache cleanup');
+      const entries = Array.from(imageCache.entries());
+      entries.sort((a, b) => a[1].timestamp - b[1].timestamp);
+      const toDelete = entries.slice(0, Math.floor(entries.length * 0.4)); // 40%削除
+      
+      toDelete.forEach(([key]) => {
+        const cachedImage = imageCache.get(key);
+        if (cachedImage) {
+          const ctx = cachedImage.canvas.getContext('2d');
+          if (ctx) {
+            ctx.clearRect(0, 0, cachedImage.canvas.width, cachedImage.canvas.height);
+          }
+        }
+        imageCache.delete(key);
+      });
+      
+      console.log(`🧹 Safari: Moderate cleanup removed ${toDelete.length} images, current size: ${imageCache.size}`);
+    } else if (currentSize > MAX_CACHE_SIZE * 0.5) { // 50%で軽いクリーンアップ
+      console.log('🧹 Safari: Light cache cleanup');
+      const entries = Array.from(imageCache.entries());
+      entries.sort((a, b) => a[1].timestamp - b[1].timestamp);
+      const toDelete = entries.slice(0, Math.floor(entries.length * 0.2)); // 20%のみ削除
+      
+      toDelete.forEach(([key]) => {
+        const cachedImage = imageCache.get(key);
+        if (cachedImage) {
+          const ctx = cachedImage.canvas.getContext('2d');
+          if (ctx) {
+            ctx.clearRect(0, 0, cachedImage.canvas.width, cachedImage.canvas.height);
+          }
+        }
+        imageCache.delete(key);
+      });
+      
+      console.log(`🧹 Safari: Light cleanup removed ${toDelete.length} images, current size: ${imageCache.size}`);
     }
   }
 };
@@ -784,17 +816,17 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
     // 新しい画像の読み込みを即座に開始
     console.log('🖼️ Loading image for display:', src, 'ImageId:', imageId);
     getCachedOrCreateImage(src);
-  }, [src, imageId, getCachedOrCreateImage]);
+  }, [src, imageId]);
 
   // Safari用の画像読み込み完了検出（CSS版のみ）
   useEffect(() => {
-    if (useCssWatermark && currentSrc) {
-      console.log('🔍 Safari image load detection for:', currentSrc);
+    if (useCssWatermark && src) {
+      console.log('🔍 Safari image load detection for:', src);
       
       // 画像が既に読み込まれている場合の検出
       const img = new Image();
       img.onload = () => {
-        console.log('✅ Safari pre-check: Image already loaded:', currentSrc);
+        console.log('✅ Safari pre-check: Image already loaded:', src);
         setIsLoading(false);
         setError(false);
         if (onLoadComplete) {
@@ -802,8 +834,8 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
         }
       };
       img.onerror = () => {
-        console.log('❌ Safari pre-check: Image load failed:', currentSrc);
-        if (fallbackSrc && currentSrc !== fallbackSrc) {
+        console.log('❌ Safari pre-check: Image load failed:', src);
+        if (fallbackSrc && src !== fallbackSrc) {
           console.log('Trying fallback for Safari pre-check:', fallbackSrc);
           setCurrentSrc(fallbackSrc);
         } else {
@@ -814,9 +846,9 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
           }
         }
       };
-      img.src = currentSrc;
+      img.src = src;
     }
-  }, [currentSrc, useCssWatermark, fallbackSrc, onLoadComplete, onLoadError]);
+  }, [src, useCssWatermark, fallbackSrc, onLoadComplete, onLoadError]);
 
   if (error) {
     return (

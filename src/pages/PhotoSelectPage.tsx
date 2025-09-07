@@ -290,8 +290,25 @@ export const PhotoSelectPage: React.FC = () => {
     const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
     
-    // Safariモバイルではプリロード数を削減
-    const preloadCount = (isSafari && isMobile) ? 3 : 5;
+    // 動的プリロード戦略（メモリ使用量に応じて調整）
+    let preloadCount = 5; // デフォルト
+    
+    if (isSafari && isMobile) {
+      // キャッシュサイズに応じてプリロード数を動的調整
+      const imageCache = (window as any).imageCache;
+      if (imageCache) {
+        const cacheSize = imageCache.size;
+        if (cacheSize > 80) {
+          preloadCount = 1; // メモリ不足時は最小限
+        } else if (cacheSize > 60) {
+          preloadCount = 2; // 中程度の制限
+        } else {
+          preloadCount = 3; // 通常時
+        }
+      } else {
+        preloadCount = 3; // フォールバック
+      }
+    }
     
     // 現在の画像（currentIndex）は含まず、次の画像からプリロード
     const indicesToPreload = Array.from({ length: preloadCount }, (_, i) => currentIndex + i + 1)
@@ -550,6 +567,26 @@ export const PhotoSelectPage: React.FC = () => {
       } 
     });
   }, [photos, selectedPhotos, allPhotoOption, searchInfo, navigate]);
+
+  // モーダル画像のURLをメモ化
+  const modalImageUrl = useMemo(() => {
+    if (!modalPhoto) return '';
+    const url = getHighResUrl(modalPhoto.storageUrl);
+    // リロード時のみタイムスタンプを追加（modalImageKeyが0より大きい場合）
+    const finalUrl = modalImageKey > 0 ? `${url}?t=${Date.now()}` : url;
+    console.log(`🖼️ Displaying image ${modalPhoto.number}, src: ${finalUrl}, reloadKey: ${modalImageKey}`);
+    console.log(`🔍 Display URL details:`, {
+      originalUrl: modalPhoto.storageUrl,
+      baseUrl: url,
+      finalUrl: finalUrl,
+      isReload: modalImageKey > 0,
+      hasTimestamp: finalUrl.includes('?t='),
+      hasQuery: finalUrl.includes('?'),
+      quality: finalUrl.includes('quality='),
+      width: finalUrl.includes('w=')
+    });
+    return finalUrl;
+  }, [modalPhoto?.storageUrl, modalPhoto?.number, modalImageKey]);
 
   const photoCards = useMemo(() => {
     return photos.map((photo) => (
@@ -860,23 +897,7 @@ export const PhotoSelectPage: React.FC = () => {
               {/* WatermarkedImageコンポーネント（読み込み処理を一元化） */}
               <WatermarkedImage
                 key={`${modalPhoto.id}-${modalImageKey}`} // 強制再読み込み用のkey
-                src={(() => {
-                  const url = getHighResUrl(modalPhoto.storageUrl);
-                  // リロード時のみタイムスタンプを追加（modalImageKeyが0より大きい場合）
-                  const finalUrl = modalImageKey > 0 ? `${url}?t=${Date.now()}` : url;
-                  console.log(`🖼️ Displaying image ${modalPhoto.number}, src: ${finalUrl}, reloadKey: ${modalImageKey}`);
-                  console.log(`🔍 Display URL details:`, {
-                    originalUrl: modalPhoto.storageUrl,
-                    baseUrl: url,
-                    finalUrl: finalUrl,
-                    isReload: modalImageKey > 0,
-                    hasTimestamp: finalUrl.includes('?t='),
-                    hasQuery: finalUrl.includes('?'),
-                    quality: finalUrl.includes('quality='),
-                    width: finalUrl.includes('w=')
-                  });
-                  return finalUrl;
-                })()}
+                src={modalImageUrl}
                 alt={`写真 ${modalPhoto.number}`}
                 className="max-w-full max-h-full"
                 objectFit="contain"
