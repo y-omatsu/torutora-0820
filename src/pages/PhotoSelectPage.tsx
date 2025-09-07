@@ -290,8 +290,8 @@ export const PhotoSelectPage: React.FC = () => {
     const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
     
-    // Safariモバイルではプリロード数を削減
-    const preloadCount = (isSafari && isMobile) ? 3 : 5;
+    // Safariモバイルではプリロード数を大幅に削減
+    const preloadCount = (isSafari && isMobile) ? 1 : 5;
     
     const indicesToPreload = Array.from({ length: preloadCount }, (_, i) => currentIndex + i + 1)
       .filter(i => i >= 0 && i < photos.length); // 範囲内のインデックスのみ
@@ -469,7 +469,7 @@ export const PhotoSelectPage: React.FC = () => {
         
         const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
         const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-        const preloadCount = (isSafari && isMobile) ? 3 : 5;
+        const preloadCount = (isSafari && isMobile) ? 1 : 5;
         
         const indicesToPreload = Array.from({ length: preloadCount }, (_, i) => currentModalIndex + i + 1)
           .filter(i => i >= 0 && i < photos.length);
@@ -712,6 +712,18 @@ export const PhotoSelectPage: React.FC = () => {
                     setModalImageError(false);
                     setModalImageLoading(true);
                     setModalImageProgress(0);
+                    
+                    // キャッシュを完全にクリア
+                    if (modalPhoto) {
+                      const highResUrl = getHighResUrl(modalPhoto.storageUrl);
+                      const cacheKey = `${highResUrl}|写真 ${modalPhoto.number}`;
+                      const imageCache = (window as any).imageCache;
+                      if (imageCache) {
+                        imageCache.delete(cacheKey);
+                        console.log('🗑️ Cache cleared for:', cacheKey);
+                      }
+                    }
+                    
                     // 強制的に画像を再読み込み（keyを変更してコンポーネントを再マウント）
                     setModalImageKey(prev => prev + 1);
                     console.log('🔄 Reload triggered, key updated to:', modalImageKey + 1);

@@ -65,7 +65,7 @@ const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 const checkMemoryPressure = () => {
   if (isSafari && isMobile) {
     // Safariモバイルではより積極的にキャッシュをクリーンアップ
-    if (imageCache.size > MAX_CACHE_SIZE * 0.8) {
+    if (imageCache.size > MAX_CACHE_SIZE * 0.6) { // 60%でクリーンアップ開始
       console.log('⚠️ Memory pressure detected, cleaning up cache');
       cleanupOldCache();
       
@@ -73,6 +73,12 @@ const checkMemoryPressure = () => {
       if (window.gc) {
         window.gc();
       }
+    }
+    
+    // Safari用：定期的に古いキャッシュを削除
+    if (imageCache.size > 20) { // 20枚を超えたら積極的にクリーンアップ
+      console.log('🧹 Safari: Proactive cache cleanup');
+      cleanupOldCache();
     }
   }
 };
@@ -86,6 +92,23 @@ if (process.env.NODE_ENV === 'development') {
     }
     checkMemoryPressure();
   }, 30000); // 30秒ごとに統計を出力
+  
+  // Safari用：強制メモリクリーンアップ関数をグローバルに公開
+  if (isSafari && isMobile) {
+    (window as any).forceSafariCleanup = () => {
+      console.log('🧹 Force Safari cleanup triggered');
+      const oldSize = imageCache.size;
+      cleanupOldCache();
+      console.log(`🧹 Safari cleanup: ${oldSize} -> ${imageCache.size} images`);
+      
+      // 強制ガベージコレクション
+      if (window.gc) {
+        window.gc();
+        console.log('🗑️ Forced garbage collection');
+      }
+    };
+  }
+}
   
   // キャッシュの内容を詳細表示する関数
   (window as any).debugImageCache = () => {
@@ -102,7 +125,6 @@ if (process.env.NODE_ENV === 'development') {
     }
     console.log('===============================');
   };
-}
 
 // 画像プリロード関数（表示に影響しない完全独立した処理）
 const preloadImage = (src: string, alt: string, fallbackSrc?: string) => {
@@ -361,6 +383,35 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
     const cacheKey = getCacheKey(imageSrc, alt);
     const cached = imageCache.get(cacheKey);
     
+    // Safari用：グレー背景（エラー状態）のキャッシュを無視
+    if (cached && isSafari && isMobile) {
+      const canvas = cached.canvas;
+      if (canvas && canvas.width > 0 && canvas.height > 0) {
+        // キャンバスが完全にグレーかどうかチェック
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          const imageData = ctx.getImageData(0, 0, Math.min(canvas.width, 10), Math.min(canvas.height, 10));
+          const data = imageData.data;
+          let isGray = true;
+          for (let i = 0; i < data.length; i += 4) {
+            const r = data[i];
+            const g = data[i + 1];
+            const b = data[i + 2];
+            // 完全にグレー（R=G=B）でない場合は有効な画像とみなす
+            if (r !== g || g !== b) {
+              isGray = false;
+              break;
+            }
+          }
+          if (isGray) {
+            console.log('🚫 Safari: Detected gray background cache, removing:', cacheKey);
+            imageCache.delete(cacheKey);
+            // キャッシュを削除したので、新規作成に進む
+          }
+        }
+      }
+    }
+    
     // キャッシュが有効な場合（プリロードされた画像も使用可能）
     if (cached && Date.now() - cached.timestamp < CACHE_EXPIRY_TIME) {
       console.log('✅ Using cached image:', cacheKey, 'Size:', cached.canvas.width, 'x', cached.canvas.height, 'Current src:', currentSrc, 'Requested src:', imageSrc);
@@ -541,6 +592,13 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
       console.error('Error details:', error);
       console.error('User Agent:', navigator.userAgent);
       console.error('Image src:', img.src);
+      
+      // Safari用：エラー時にキャッシュをクリア
+      if (isSafari && isMobile) {
+        const cacheKey = getCacheKey(imageSrc, alt);
+        imageCache.delete(cacheKey);
+        console.log('🗑️ Safari: Cleared error cache for:', cacheKey);
+      }
       
       // 古い画像の読み込みエラー時は表示を更新しない
       if (imageId && currentImageId && imageId !== currentImageId) {
