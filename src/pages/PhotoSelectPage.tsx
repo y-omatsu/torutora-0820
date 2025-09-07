@@ -68,11 +68,10 @@ const isMobile = () => {
 // 高解像度画像URL取得関数（デバイスに応じて最適化）
 const getHighResUrl = (url: string): string => {
   if (url.includes('firebasestorage.googleapis.com')) {
-    const isMobileDevice = isMobile();
-    const quality = isMobileDevice ? 5 : 10; // モバイルはより低品質
-    const width = isMobileDevice ? 150 : 200; // モバイルはより小さいサイズ
+    // プリロードと表示で同じURLを生成するため、固定値を使用
+    const quality = 10; // 固定品質
+    const width = 200; // 固定幅
     return url.includes('?') ? `${url}&quality=${quality}&w=${width}` : `${url}?quality=${quality}&w=${width}`;
-    
   }
   return url;
 };
@@ -260,15 +259,21 @@ export const PhotoSelectPage: React.FC = () => {
     });
   }, [allPhotoOption]);
 
-  // キャッシュチェック関数
+  // キャッシュチェック関数（WatermarkedImageのキャッシュと同期）
   const checkImageCache = useCallback((photo: GalleryPhoto) => {
     const highResUrl = getHighResUrl(photo.storageUrl);
     const cacheKey = `${highResUrl}|写真 ${photo.number}`;
     
-    // グローバルキャッシュをチェック（WatermarkedImageのキャッシュと同じ）
-    const cached = (window as any).imageCache?.get?.(cacheKey);
-    if (cached && Date.now() - cached.timestamp < 30 * 60 * 1000) { // 30分で期限切れ
-      console.log('✅ Image found in cache:', cacheKey);
+    // WatermarkedImageコンポーネントのキャッシュを直接参照
+    const imageCache = (window as any).imageCache;
+    if (!imageCache) {
+      console.log('❌ Image cache not available');
+      return false;
+    }
+    
+    const cached = imageCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < 60 * 60 * 1000) { // 60分で期限切れ（WatermarkedImageと同期）
+      console.log('✅ Image found in cache:', cacheKey, 'Size:', cached.canvas?.width, 'x', cached.canvas?.height);
       return true;
     }
     
@@ -307,7 +312,13 @@ export const PhotoSelectPage: React.FC = () => {
       
       preloadPromises.push(
         preloadImage(highResUrl, `写真 ${photo.number}`)
-          .then(() => console.log(`✅ Successfully preloaded modal image ${i}: ${photo.number}`))
+          .then(() => {
+            console.log(`✅ Successfully preloaded modal image ${i}: ${photo.number}`);
+            // プリロード完了後にキャッシュキーを確認
+            const cacheKey = `${highResUrl}|写真 ${photo.number}`;
+            const cached = (window as any).imageCache?.get?.(cacheKey);
+            console.log(`📊 Preload cache verification for ${photo.number}:`, cached ? 'CACHED' : 'NOT CACHED', 'Key:', cacheKey);
+          })
           .catch(err => console.warn(`❌ Failed to preload modal image ${i}:`, err))
       );
     }
@@ -316,8 +327,18 @@ export const PhotoSelectPage: React.FC = () => {
     Promise.allSettled(preloadPromises).then(results => {
       const successCount = results.filter(r => r.status === 'fulfilled').length;
       console.log(`🎯 Preload completed: ${successCount}/${preloadPromises.length} adjacent modal images`);
+      
+      // プリロード完了後にキャッシュ状況を確認
+      setTimeout(() => {
+        console.log('🔍 Post-preload cache verification:');
+        indicesToPreload.forEach(i => {
+          const photo = photos[i];
+          const isCached = checkImageCache(photo);
+          console.log(`  - Photo ${photo.number} (index ${i}): ${isCached ? 'CACHED' : 'NOT CACHED'}`);
+        });
+      }, 1000);
     });
-  }, [photos]);
+  }, [photos, checkImageCache]);
 
 
   // 画像読み込み完了時のコールバック
@@ -325,7 +346,18 @@ export const PhotoSelectPage: React.FC = () => {
     console.log(`✅ Image load complete for index ${currentIndex}, starting preload immediately`);
     // 現在の画像の読み込みが完了したら即座にプリロードを開始
     preloadAdjacentImages(currentIndex);
-  }, [preloadAdjacentImages]);
+    
+    // プリロードの完了を少し待ってからログ出力
+    setTimeout(() => {
+      console.log(`🔄 Preload status check for index ${currentIndex}`);
+      const nextIndex = currentIndex + 1;
+      if (nextIndex < photos.length) {
+        const nextPhoto = photos[nextIndex];
+        const isCached = checkImageCache(nextPhoto);
+        console.log(`📊 Next image (${nextPhoto.number}) cache status:`, isCached ? 'CACHED' : 'NOT CACHED');
+      }
+    }, 2000); // 2秒後にプリロード状況をチェック
+  }, [preloadAdjacentImages, photos, checkImageCache]);
 
   // 簡素化されたhandlePhotoClick（WatermarkedImageに読み込みを任せる）
   const handlePhotoClick = useCallback((photo: GalleryPhoto) => {
@@ -682,9 +714,7 @@ export const PhotoSelectPage: React.FC = () => {
                     setModalImageProgress(0);
                     // 強制的に画像を再読み込み（keyを変更してコンポーネントを再マウント）
                     setModalImageKey(prev => prev + 1);
-                    // Safari用：URLにタイムスタンプを追加してキャッシュを回避
-                    const timestamp = Date.now();
-                    console.log('🔄 Reload with timestamp:', timestamp);
+                    console.log('🔄 Reload triggered, key updated to:', modalImageKey + 1);
                   }}
                   className="bg-gray-400 bg-opacity-70 text-white rounded-full w-10 h-10 flex items-center justify-center hover:bg-opacity-90 transition-all"
                   title="再読み込み"
@@ -758,7 +788,11 @@ export const PhotoSelectPage: React.FC = () => {
               {/* WatermarkedImageコンポーネント（読み込み処理を一元化） */}
               <WatermarkedImage
                 key={`${modalPhoto.id}-${modalImageKey}`} // 強制再読み込み用のkey
-                src={getHighResUrl(modalPhoto.storageUrl) + (modalImageKey > 0 ? `?t=${Date.now()}` : '')}
+                src={(() => {
+                  const url = getHighResUrl(modalPhoto.storageUrl);
+                  console.log(`🖼️ Displaying image ${modalPhoto.number}, src: ${url}`);
+                  return url;
+                })()}
                 alt={`写真 ${modalPhoto.number}`}
                 className="max-w-full max-h-full"
                 objectFit="contain"
