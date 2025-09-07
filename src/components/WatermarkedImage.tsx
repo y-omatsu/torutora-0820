@@ -230,6 +230,10 @@ const loadImageWithPriority = (src: string, alt: string, fallbackSrc?: string) =
       }
     }, 8000); // 8秒でタイムアウト（プリロードより短い）
     
+    // 既存のイベントハンドラーをクリア
+    img.onload = null;
+    img.onerror = null;
+    
     img.onload = () => {
       console.log('🎉 Priority onload event triggered for:', cacheKey);
       clearTimeout(timeoutId);
@@ -415,7 +419,7 @@ const loadImageWithPriority = (src: string, alt: string, fallbackSrc?: string) =
         }
       }, 50); // より頻繁にチェック（50ms）
       
-      // 6秒後にポーリングを停止（プリロードより短い）
+      // 10秒後にポーリングを停止（タイムアウトより長く）
       setTimeout(() => {
         clearInterval(checkInterval);
         if (!img.onloadCalled && !img.onerrorCalled) {
@@ -425,7 +429,7 @@ const loadImageWithPriority = (src: string, alt: string, fallbackSrc?: string) =
             img.onerror?.(new Event('error'));
           }
         }
-      }, 6000);
+      }, 10000);
     }
   });
   
@@ -500,6 +504,10 @@ const preloadImage = (src: string, alt: string, fallbackSrc?: string) => {
         img.onerror?.(new Event('error'));
       }
     }, 10000); // 10秒でタイムアウト
+    
+    // 既存のイベントハンドラーをクリア
+    img.onload = null;
+    img.onerror = null;
     
     img.onload = () => {
       clearTimeout(timeoutId);
@@ -661,7 +669,7 @@ const preloadImage = (src: string, alt: string, fallbackSrc?: string) => {
         }
       }, 100); // 100msごとにチェック
       
-      // 8秒後にポーリングを停止
+      // 12秒後にポーリングを停止（優先ダウンロードより長く）
       setTimeout(() => {
         clearInterval(checkInterval);
         // ポーリング終了時、まだ読み込み完了していない場合はエラーとして処理
@@ -672,7 +680,7 @@ const preloadImage = (src: string, alt: string, fallbackSrc?: string) => {
             img.onerror?.(new Event('error'));
           }
         }
-      }, 8000);
+      }, 12000);
     }
   });
   
@@ -854,14 +862,38 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
       currentSrc
     });
 
-    // キャッシュがない場合は直接Storageから読み込み（プリロード待機を無視）
+    // キャッシュがない場合の処理
     if (!cached) {
-      console.log('🚫 Image not in cache, loading directly from storage:', imageSrc);
-      console.log('💡 Skipping preload wait for immediate display');
+      console.log('🚫 Image not in cache, checking preload status:', imageSrc);
       
-      // プリロードは継続させるが、表示は直接読み込み
+      // プリロード途中の画像かチェック（短時間のみ待機）
       if (preloadingImages.has(cacheKey)) {
-        console.log('⏳ Image is currently preloading in background, proceeding with direct load:', cacheKey);
+        console.log('⏳ Image is currently preloading, waiting briefly for completion:', cacheKey);
+        
+        // プリロード待機のタイムアウト処理（2秒でタイムアウト）
+        const preloadTimeout = setTimeout(() => {
+          console.log('⏰ Preload wait timeout, proceeding to direct load:', cacheKey);
+          // プリロードを無視して直接読み込みに進む
+          console.log('🚀 Bypassing preload wait, proceeding to direct load');
+          // 直接読み込み処理を実行
+          loadImageDirectly();
+        }, 2000);
+        
+        preloadingImages.get(cacheKey)!.then(() => {
+          clearTimeout(preloadTimeout);
+          console.log('✅ Preload completed, retrying display:', cacheKey);
+          // プリロード完了後に再試行（キャッシュから取得）
+          getCachedOrCreateImage(imageSrc, isFallback);
+        }).catch((error) => {
+          clearTimeout(preloadTimeout);
+          console.error('❌ Preload failed, proceeding to direct load:', error);
+          // プリロード失敗時は直接読み込み
+          console.log('🚀 Preload failed, proceeding to direct load');
+          loadImageDirectly();
+        });
+        return;
+      } else {
+        console.log('💡 No preload in progress, loading directly from storage:', imageSrc);
       }
       
       // Safari用：メモリ不足時の特別処理
@@ -915,6 +947,10 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
         onLoadError();
       }
     }, 12000); // 12秒でタイムアウト（ポーリングより長く）
+    
+    // 既存のイベントハンドラーをクリア
+    img.onload = null;
+    img.onerror = null;
     
     img.onload = () => {
       clearTimeout(timeoutId); // タイムアウトをクリア
@@ -1111,7 +1147,7 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
         }
       }, 100); // 100msごとにチェック
       
-      // 8秒後にポーリングを停止（タイムアウトより短く）
+      // 10秒後にポーリングを停止（タイムアウトより短く）
       setTimeout(() => {
         clearInterval(checkInterval);
         // ポーリング終了時、まだ読み込み完了していない場合はエラーとして処理
@@ -1122,7 +1158,7 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
             img.onerror?.(new Event('error'));
           }
         }
-      }, 8000);
+      }, 10000);
     }
     };
     
