@@ -460,7 +460,7 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const img = new Image();
+    const img = new Image() as HTMLImageElement & { onloadCalled?: boolean; onerrorCalled?: boolean };
     img.crossOrigin = 'anonymous';
     
     // Safari用：タイムアウト処理を追加
@@ -481,6 +481,14 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
     
     img.onload = () => {
       clearTimeout(timeoutId); // タイムアウトをクリア
+      
+      // 重複発火を防ぐ
+      if (img.onloadCalled) {
+        console.log('🚫 Duplicate onload event, ignoring');
+        return;
+      }
+      img.onloadCalled = true;
+      
       try {
         console.log('🖼️ Image onload triggered for:', imageSrc, 'ImageId:', imageId, 'CurrentImageId:', currentImageId);
         console.log('🖼️ Image dimensions:', img.width, 'x', img.height);
@@ -592,6 +600,14 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
 
     img.onerror = (error) => {
       clearTimeout(timeoutId); // タイムアウトをクリア
+      
+      // 重複発火を防ぐ
+      if (img.onerrorCalled) {
+        console.log('🚫 Duplicate onerror event, ignoring');
+        return;
+      }
+      img.onerrorCalled = true;
+      
       console.error('Image loading error for:', imageSrc);
       console.error('Error details:', error);
       console.error('User Agent:', navigator.userAgent);
@@ -639,11 +655,18 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
           clearInterval(checkInterval);
           if (img.naturalWidth > 0 && img.naturalHeight > 0) {
             console.log('✅ Safari: Direct storage image loaded via polling check');
-            // 手動でonloadを発火
-            img.onload?.(new Event('load'));
+            // 手動でonloadを発火（既に発火済みの場合はスキップ）
+            if (!img.onloadCalled) {
+              img.onloadCalled = true;
+              img.onload?.(new Event('load'));
+            }
           } else {
             console.log('❌ Safari: Direct storage image failed via polling check');
-            img.onerror?.(new Event('error'));
+            // 手動でonerrorを発火（既に発火済みの場合はスキップ）
+            if (!img.onerrorCalled) {
+              img.onerrorCalled = true;
+              img.onerror?.(new Event('error'));
+            }
           }
         }
       }, 100); // 100msごとにチェック
