@@ -863,17 +863,18 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
       if (preloadingImages.has(cacheKey)) {
         console.log('⏳ Image is currently preloading, waiting for completion:', cacheKey);
         
-        // プリロード待機のタイムアウト処理（3秒でタイムアウト）
+        // プリロード待機のタイムアウト処理（5秒でタイムアウト）
         const preloadTimeout = setTimeout(() => {
-          console.log('⏰ Preload wait timeout, falling back to direct load:', cacheKey);
-          preloadingImages.delete(cacheKey);
+          console.log('⏰ Preload wait timeout, but keeping preload active:', cacheKey);
+          // プリロードは継続させるが、表示用に直接読み込みも開始
+          console.log('🔄 Starting parallel direct load while preload continues:', cacheKey);
           loadImageDirectly();
-        }, 3000);
+        }, 5000);
         
         preloadingImages.get(cacheKey)!.then(() => {
           clearTimeout(preloadTimeout);
           console.log('✅ Preload completed, retrying display:', cacheKey);
-          // プリロード完了後に再試行
+          // プリロード完了後に再試行（キャッシュから取得）
           getCachedOrCreateImage(imageSrc, isFallback);
         }).catch((error) => {
           clearTimeout(preloadTimeout);
