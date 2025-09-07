@@ -382,7 +382,8 @@ export const PhotoSelectPage: React.FC = () => {
     }
     
     // プリロードは並行して開始（画像表示を待たない）
-    console.log(`🚀 Starting preload for index ${index} in parallel`);
+    // ただし、現在の画像は既にWatermarkedImageで読み込まれるので、次の画像からプリロード
+    console.log(`🚀 Starting preload for adjacent images from index ${index} in parallel`);
     preloadAdjacentImages(index);
   }, [photos, checkImageCache, preloadAdjacentImages]);
 

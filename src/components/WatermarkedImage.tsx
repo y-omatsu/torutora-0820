@@ -776,13 +776,7 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
     
     // 画像切り替え時は確実に読み込み状態をリセット
     console.log('🔄 Reset loading state for new image:', src);
-    
-    // 新しい画像の読み込みを即座に開始
-    if (src !== currentSrc) {
-      console.log('🚀 Starting immediate load for new image:', src);
-      getCachedOrCreateImage(src);
-    }
-  }, [src, imageId, getCachedOrCreateImage]);
+  }, [src, imageId]);
 
   // Safari用の画像読み込み完了検出（CSS版のみ）
   useEffect(() => {
@@ -816,7 +810,7 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
     }
   }, [currentSrc, useCssWatermark, fallbackSrc, onLoadComplete, onLoadError]);
 
-  // 画像読み込み実行（表示用）
+  // 画像読み込み実行（表示用）- 単一のuseEffectで管理
   useEffect(() => {
     console.log('🖼️ Loading image for display:', currentSrc, 'ImageId:', currentImageId);
     getCachedOrCreateImage(currentSrc);
