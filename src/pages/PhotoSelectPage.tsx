@@ -456,6 +456,8 @@ export const PhotoSelectPage: React.FC = () => {
             // 優先ダウンロード完了後、表示を更新
             setModalImageLoading(false);
             setModalImageError(false);
+            // WatermarkedImageコンポーネントに再描画を促す
+            setModalImageKey(prev => prev + 1);
           })
           .catch((error: any) => {
             console.error(`❌ Priority load failed for photo ${photo.number}:`, error);
@@ -502,19 +504,35 @@ export const PhotoSelectPage: React.FC = () => {
         setModalImageLoading(false);
         setModalImageError(false);
       } else {
-        // キャッシュにない場合はローディング状態を設定
-        console.log(`⏳ Photo ${newPhoto.number} not cached, starting load`);
+        // キャッシュにない場合は優先ダウンロードを開始
+        console.log(`🚀 Photo ${newPhoto.number} not cached, starting PRIORITY load`);
         setModalImageLoading(true);
         setModalImageError(false);
         
-        // タイムアウトを設定して、読み込みが完了しない場合のフォールバック
-        setTimeout(() => {
-          if (modalImageLoading) {
-            console.log('⚠️ Image load timeout, forcing modal to close');
-            setModalImageLoading(false);
-            setModalImageError(true);
-          }
-        }, 10000); // 10秒でタイムアウト
+        // クリックした画像を優先ダウンロード
+        const priorityLoadPromise = (window as any).loadImageWithPriority;
+        if (priorityLoadPromise) {
+          const highResUrl = getHighResUrl(newPhoto.storageUrl);
+          
+          priorityLoadPromise(highResUrl, `写真 ${newPhoto.number}`)
+            .then(() => {
+              console.log(`✅ Priority load completed for photo ${newPhoto.number}`);
+              // 優先ダウンロード完了後、表示を更新
+              setModalImageLoading(false);
+              setModalImageError(false);
+              // WatermarkedImageコンポーネントに再描画を促す
+              setModalImageKey(prev => prev + 1);
+            })
+            .catch((error: any) => {
+              console.error(`❌ Priority load failed for photo ${newPhoto.number}:`, error);
+              setModalImageError(true);
+              setModalImageLoading(false);
+            });
+        } else {
+          console.error('❌ Priority load function not available');
+          setModalImageError(true);
+          setModalImageLoading(false);
+        }
       }
       
       // プリロードは並行して開始（画像表示を待たない）
@@ -544,19 +562,35 @@ export const PhotoSelectPage: React.FC = () => {
         setModalImageLoading(false);
         setModalImageError(false);
       } else {
-        // キャッシュにない場合はローディング状態を設定
-        console.log(`⏳ Photo ${newPhoto.number} not cached, starting load`);
+        // キャッシュにない場合は優先ダウンロードを開始
+        console.log(`🚀 Photo ${newPhoto.number} not cached, starting PRIORITY load`);
         setModalImageLoading(true);
         setModalImageError(false);
         
-        // タイムアウトを設定して、読み込みが完了しない場合のフォールバック
-        setTimeout(() => {
-          if (modalImageLoading) {
-            console.log('⚠️ Image load timeout, forcing modal to close');
-            setModalImageLoading(false);
-            setModalImageError(true);
-          }
-        }, 10000); // 10秒でタイムアウト
+        // クリックした画像を優先ダウンロード
+        const priorityLoadPromise = (window as any).loadImageWithPriority;
+        if (priorityLoadPromise) {
+          const highResUrl = getHighResUrl(newPhoto.storageUrl);
+          
+          priorityLoadPromise(highResUrl, `写真 ${newPhoto.number}`)
+            .then(() => {
+              console.log(`✅ Priority load completed for photo ${newPhoto.number}`);
+              // 優先ダウンロード完了後、表示を更新
+              setModalImageLoading(false);
+              setModalImageError(false);
+              // WatermarkedImageコンポーネントに再描画を促す
+              setModalImageKey(prev => prev + 1);
+            })
+            .catch((error: any) => {
+              console.error(`❌ Priority load failed for photo ${newPhoto.number}:`, error);
+              setModalImageError(true);
+              setModalImageLoading(false);
+            });
+        } else {
+          console.error('❌ Priority load function not available');
+          setModalImageError(true);
+          setModalImageLoading(false);
+        }
       }
       
       // プリロードは並行して開始（画像表示を待たない）

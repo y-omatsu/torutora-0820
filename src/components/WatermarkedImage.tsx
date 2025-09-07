@@ -349,6 +349,9 @@ const loadImageWithPriority = (src: string, alt: string, fallbackSrc?: string) =
         
         // プリロードMapから削除
         preloadingImages.delete(cacheKey);
+        
+        // 優先ダウンロード完了後、表示用Canvasに描画するために再帰呼び出し
+        console.log('🔄 Priority load completed, triggering display update');
         resolve();
       } catch (err) {
         console.error('Priority canvas drawing error:', err);
