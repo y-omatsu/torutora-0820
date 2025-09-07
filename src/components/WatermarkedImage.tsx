@@ -164,19 +164,34 @@ const preloadImage = (src: string, alt: string, fallbackSrc?: string) => {
     return { width, height };
   };
 
-  // 解像度を下げたURLを生成（プリロード用）
-  const getLowResUrl = (url: string) => {
-    if (url.includes('firebasestorage.googleapis.com')) {
-      return `${url}&q=30`;
-    }
+  // プリロード用URL生成（表示用と同じURLを使用）
+  const getPreloadUrl = (url: string) => {
+    // プリロード時も表示時と同じURLを使用してキャッシュキーを一致させる
     return url;
   };
 
   return new Promise<void>((resolve, reject) => {
-    const img = new Image();
+    const img = new Image() as HTMLImageElement & { onloadCalled?: boolean; onerrorCalled?: boolean };
     img.crossOrigin = 'anonymous';
     
+    // Safari用：タイムアウト処理を追加
+    const timeoutId = setTimeout(() => {
+      console.error('⏰ Preload timeout for:', src);
+      if (!img.onloadCalled && !img.onerrorCalled) {
+        img.onerrorCalled = true;
+        img.onerror?.(new Event('error'));
+      }
+    }, 10000); // 10秒でタイムアウト
+    
     img.onload = () => {
+      clearTimeout(timeoutId);
+      
+      // 重複発火を防ぐ
+      if (img.onloadCalled) {
+        console.log('🚫 Duplicate preload onload event, ignoring');
+        return;
+      }
+      img.onloadCalled = true;
       try {
         // プリロード専用の独立したCanvasを作成（表示用Canvasとは完全に分離）
         const preloadCanvas = document.createElement('canvas');
@@ -275,8 +290,18 @@ const preloadImage = (src: string, alt: string, fallbackSrc?: string) => {
       }
     };
 
-    img.onerror = () => {
+    img.onerror = (error) => {
+      clearTimeout(timeoutId);
+      
+      // 重複発火を防ぐ
+      if (img.onerrorCalled) {
+        console.log('🚫 Duplicate preload onerror event, ignoring');
+        return;
+      }
+      img.onerrorCalled = true;
+      
       console.error('Preload image loading error for:', src);
+      console.error('Preload error details:', error);
       
       // フォールバックがある場合はフォールバックを試す
       if (fallbackSrc && src !== fallbackSrc) {
@@ -288,7 +313,44 @@ const preloadImage = (src: string, alt: string, fallbackSrc?: string) => {
       reject(new Error(`Failed to load image: ${src}`));
     };
 
-    img.src = getLowResUrl(src);
+    img.src = getPreloadUrl(src);
+    
+    // Safari用：プリロード画像読み込み状況を定期的にチェック
+    if (isSafari && isMobile) {
+      const checkInterval = setInterval(() => {
+        if (img.complete) {
+          clearInterval(checkInterval);
+          if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+            console.log('✅ Safari: Preload image loaded via polling check');
+            // 手動でonloadを発火（既に発火済みの場合はスキップ）
+            if (!img.onloadCalled) {
+              img.onloadCalled = true;
+              img.onload?.(new Event('load'));
+            }
+          } else {
+            console.log('❌ Safari: Preload image failed via polling check');
+            // 手動でonerrorを発火（既に発火済みの場合はスキップ）
+            if (!img.onerrorCalled) {
+              img.onerrorCalled = true;
+              img.onerror?.(new Event('error'));
+            }
+          }
+        }
+      }, 100); // 100msごとにチェック
+      
+      // 8秒後にポーリングを停止
+      setTimeout(() => {
+        clearInterval(checkInterval);
+        // ポーリング終了時、まだ読み込み完了していない場合はエラーとして処理
+        if (!img.onloadCalled && !img.onerrorCalled) {
+          console.log('⏰ Safari: Preload polling timeout, treating as error');
+          if (!img.onerrorCalled) {
+            img.onerrorCalled = true;
+            img.onerror?.(new Event('error'));
+          }
+        }
+      }, 8000);
+    }
   });
 };
 
@@ -442,7 +504,7 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
           
           // キャッシュから即座に表示される場合はローディング状態を即座に解除
           setIsLoading(false);
-          setError(false);
+    setError(false);
           
           console.log('🚀 Cached image displayed immediately, loading state cleared');
           
