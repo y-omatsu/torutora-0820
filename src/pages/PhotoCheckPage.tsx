@@ -1,6 +1,5 @@
 import { useLocation, useNavigate } from 'react-router-dom';
 import { usePhotoGallery } from '../hooks/usePhotoGallery';
-import { WatermarkedImage } from '../components/WatermarkedImage';
 import { GalleryPhoto, PhotoSearchInfo } from '../types/Gallery';
 
 export const PhotoCheckPage: React.FC = () => {
@@ -59,29 +58,67 @@ export const PhotoCheckPage: React.FC = () => {
       <div className="max-w-4xl mx-auto px-4 py-8">
         {/* 選択された写真一覧 */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
-          {selectedPhotos.map((photo) => (
-            <div key={photo.id} className="relative">
-              <div className="bg-white rounded-lg shadow-md overflow-hidden">
-                <div className="relative aspect-square">
-                  <WatermarkedImage
-                    src={photo.storageUrl}
-                    alt={`写真 ${photo.number}`}
-                    className="w-full h-full"
-                  />
-                  <div className="absolute top-2 right-2 w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center">
-                    <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
+          {selectedPhotos.map((photo) => {
+            // thumbs/フォルダのサムネイル画像URLを生成
+            const getThumbnailUrl = (originalUrl: string) => {
+              if (!originalUrl.includes('firebasestorage.googleapis.com')) {
+                return originalUrl;
+              }
+
+              // URLを解析してパスを取得
+              const urlParts = originalUrl.split('/o/');
+              if (urlParts.length !== 2) return originalUrl;
+
+              const pathAndQuery = urlParts[1];
+              const queryIndex = pathAndQuery.indexOf('?');
+              const path = queryIndex !== -1 ? pathAndQuery.substring(0, queryIndex) : pathAndQuery;
+              const queryPart = queryIndex !== -1 ? pathAndQuery.substring(queryIndex) : '';
+
+              // パスをデコード
+              const decodedPath = decodeURIComponent(path);
+              const pathSegments = decodedPath.split('/');
+              
+              if (pathSegments.length < 2) return originalUrl;
+
+              // フォルダ名とファイル名を取得
+              const folderName = pathSegments[0]; // "117-澤田-堀内"
+              const fileName = pathSegments[pathSegments.length - 1]; // "001"
+              
+              // Firebase Extension は元のファイル名に _200x200 を付けて .jpg を追加する
+              // 例: "001" → "001_200x200"
+              const thumbnailFileName = `${fileName}_200x200`;
+              const thumbnailPath = `${folderName}/thumbs/${thumbnailFileName}`;
+              
+              // サムネイルURLを構築（.jpg拡張子は付けない）
+              const thumbnailUrl = `${urlParts[0]}/o/${encodeURIComponent(thumbnailPath)}${queryPart}`;
+              
+              return thumbnailUrl;
+            };
+
+            return (
+              <div key={photo.id} className="relative">
+                <div className="bg-white rounded-lg shadow-md overflow-hidden">
+                  <div className="relative aspect-square">
+                    <img
+                      src={getThumbnailUrl(photo.storageUrl)}
+                      alt={`写真 ${photo.number}`}
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute top-2 right-2 w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center">
+                      <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                  </div>
+                  <div className="p-2 text-center">
+                    <span className="text-sm text-gray-600 font-medium">
+                      {String(photo.number).padStart(3, '0')}
+                    </span>
                   </div>
                 </div>
-                <div className="p-2 text-center">
-                  <span className="text-sm text-gray-600 font-medium">
-                    {String(photo.number).padStart(3, '0')}
-                  </span>
-                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* 料金表示 */}

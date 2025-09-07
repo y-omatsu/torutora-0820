@@ -68,6 +68,15 @@ const preloadImage = (src: string, alt: string) => {
 
   console.log('🔄 Starting preload for:', cacheKey);
 
+  // プリロード用の低解像度URLを生成
+  const getPreloadUrl = (url: string) => {
+    if (url.includes('firebasestorage.googleapis.com')) {
+      // プリロードはさらに小さく（約200-500KB程度）
+      return `${url}&q=5&w=300`;
+    }
+    return url;
+  };
+
   const preloadPromise = new Promise<void>((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
@@ -82,8 +91,8 @@ const preloadImage = (src: string, alt: string) => {
           return;
         }
 
-        // Canvas サイズを設定（縦横比を保持）
-        const maxSize = 1024;
+        // Canvas サイズを設定（縦横比を保持、より小さく）
+        const maxSize = 600; // 1024から600に削減
         let canvasWidth = img.width;
         let canvasHeight = img.height;
         
@@ -166,7 +175,7 @@ const preloadImage = (src: string, alt: string) => {
       reject(new Error(`Failed to load image: ${src}`));
     };
 
-    img.src = src;
+    img.src = getPreloadUrl(src);
   });
   
   preloadingImages.set(cacheKey, preloadPromise);
@@ -211,7 +220,17 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
   // 解像度を下げたURLを生成（Firebase Storageの場合）
   const getLowResUrl = (url: string) => {
     if (url.includes('firebasestorage.googleapis.com')) {
-      return `${url}&q=30`;
+      // デバイスに応じて解像度を調整（転送サイズを大幅削減）
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+      
+      if (isMobile || isSafari) {
+        // モバイル・Safari: より小さく（約500KB-1MB程度）
+        return `${url}&q=10&w=400`;
+      } else {
+        // デスクトップ: 中程度（約1-2MB程度）
+        return `${url}&q=15&w=600`;
+      }
     }
     return url;
   };
@@ -260,8 +279,8 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
           return;
         }
         
-        // Canvas サイズを設定（縦横比を保持）
-        const maxSize = 1024;
+        // Canvas サイズを設定（縦横比を保持、より小さく）
+        const maxSize = 600; // 1024から600に削減
         let canvasWidth = img.width;
         let canvasHeight = img.height;
         

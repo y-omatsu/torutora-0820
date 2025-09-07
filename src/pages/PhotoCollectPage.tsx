@@ -5,10 +5,13 @@ export const PhotoCollectPage: React.FC = () => {
   const location = useLocation();
   const selectedPhotos = location.state?.selectedPhotos as GalleryPhoto[] || [];
 
-  const getPhotoNumbers = () => {
-    return selectedPhotos
-      .map(photo => String(photo.number).padStart(3, '0'))
-      .join('/');
+  const getPhotoNumbersWithLineBreaks = () => {
+    const numbers = selectedPhotos.map(photo => String(photo.number).padStart(3, '0'));
+    const chunks = [];
+    for (let i = 0; i < numbers.length; i += 6) { // 8から6に変更して文字がはみ出さないように調整
+      chunks.push(numbers.slice(i, i + 6).join('/'));
+    }
+    return chunks.join('\n');
   };
 
   return (
@@ -36,9 +39,11 @@ export const PhotoCollectPage: React.FC = () => {
           {selectedPhotos.length > 0 && (
             <div className="mb-6">
               <p className="text-gray-700 font-medium mb-2">購入した写真番号:</p>
-              <p className="text-lg font-bold text-blue-600 mb-4">
-                {getPhotoNumbers()}
-              </p>
+              <div className="bg-gray-50 rounded-lg p-4 mb-4">
+                <p className="text-lg font-bold text-blue-600 whitespace-pre-line text-left break-words">
+                  {getPhotoNumbersWithLineBreaks()}
+                </p>
+              </div>
             </div>
           )}
           

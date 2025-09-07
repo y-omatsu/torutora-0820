@@ -328,6 +328,33 @@ export const GalleryPage: React.FC = () => {
             </div>
           ) : (
             <>
+              {/* ダウンロードボタンと全選択 */}
+              <div className="bg-white rounded-lg shadow-md p-4 mb-6">
+                <button
+                  onClick={handleBulkDownload}
+                  disabled={selectedPhotos.size === 0 || downloading}
+                  className={`w-full py-3 rounded-lg font-semibold text-white transition-colors mb-4 ${
+                    selectedPhotos.size === 0 || downloading
+                      ? 'bg-gray-400 cursor-not-allowed'
+                      : 'bg-blue-600 hover:bg-blue-700'
+                  }`}
+                >
+                  選択した写真をダウンロード ({selectedPhotos.size}枚)
+                </button>
+
+                <label className="flex items-center space-x-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectAll}
+                    onChange={(e) => handleSelectAll(e.target.checked)}
+                    className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500"
+                  />
+                  <span className="text-gray-800 font-medium">
+                    全ての写真を選択する
+                  </span>
+                </label>
+              </div>
+
               {/* 写真一覧 */}
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
                 {photos.map((photo) => (
@@ -368,33 +395,6 @@ export const GalleryPage: React.FC = () => {
                     </div>
                   </div>
                 ))}
-              </div>
-
-              {/* 全選択とダウンロードボタン */}
-              <div className="bg-white rounded-lg shadow-md p-4 mb-6">
-                <label className="flex items-center space-x-3 cursor-pointer mb-4">
-                  <input
-                    type="checkbox"
-                    checked={selectAll}
-                    onChange={(e) => handleSelectAll(e.target.checked)}
-                    className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500"
-                  />
-                  <span className="text-gray-800 font-medium">
-                    全ての写真を選択する
-                  </span>
-                </label>
-
-                <button
-                  onClick={handleBulkDownload}
-                  disabled={selectedPhotos.size === 0 || downloading}
-                  className={`w-full py-3 rounded-lg font-semibold text-white transition-colors ${
-                    selectedPhotos.size === 0 || downloading
-                      ? 'bg-gray-400 cursor-not-allowed'
-                      : 'bg-blue-600 hover:bg-blue-700'
-                  }`}
-                >
-                  選択した写真をダウンロード ({selectedPhotos.size}枚)
-                </button>
               </div>
             </>
           )}
