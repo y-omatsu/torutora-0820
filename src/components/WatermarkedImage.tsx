@@ -830,7 +830,7 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
     );
   }
 
-  // 内部ローダーを隠すかどうか
+  // 内部ローダーを隠すかどうか（モーダルでは外部ローダーを使用）
   const showInternalLoader = !hideInternalLoader && isLoading && !externalLoading;
 
   // CSSウォーターマーク版のレンダリング
@@ -847,10 +847,10 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
           alt={alt}
           className={`w-full h-full object-${objectFit}`}
           style={{ 
-            display: isLoading ? 'none' : 'block',
-            opacity: externalLoading ? 0.3 : 1,
+            display: 'block',
+            opacity: (isLoading && !externalLoading) ? 0 : 1,
             transition: 'opacity 0.3s ease',
-            visibility: isLoading ? 'hidden' : 'visible'
+            visibility: 'visible'
           }}
           onLoad={() => {
             console.log('✅ CSS Image loaded:', currentSrc, 'FallbackSrc:', fallbackSrc);
@@ -909,8 +909,8 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
         ref={canvasRef}
         className={`w-full h-full object-${objectFit}`}
         style={{ 
-          display: isLoading ? 'none' : 'block',
-          opacity: externalLoading ? 0.3 : 1,
+          display: 'block',
+          opacity: (isLoading && !externalLoading) ? 0 : 1,
           transition: 'opacity 0.3s ease'
         }}
       />
