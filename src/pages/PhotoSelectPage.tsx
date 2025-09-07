@@ -195,7 +195,6 @@ export const PhotoSelectPage: React.FC = () => {
   
   // モーダル画像のローディング状況の状態（WatermarkedImageと連携）
   const [modalImageLoading, setModalImageLoading] = useState<boolean>(false);
-  const [modalImageProgress, setModalImageProgress] = useState<number>(0);
   const [modalImageError, setModalImageError] = useState<boolean>(false);
   const [modalImageKey, setModalImageKey] = useState<number>(0); // 画像の強制再読み込み用
 
@@ -405,7 +404,6 @@ export const PhotoSelectPage: React.FC = () => {
       // キャッシュにない場合は優先ダウンロードを開始
       console.log(`🚀 Photo ${photo.number} not cached, starting PRIORITY load`);
       setModalImageLoading(true);
-      setModalImageProgress(0);
       setModalImageError(false);
       
       // クリックした画像を優先ダウンロード
@@ -452,13 +450,11 @@ export const PhotoSelectPage: React.FC = () => {
         // キャッシュにある場合はローディング状態を設定しない
         console.log(`✅ Photo ${newPhoto.number} is cached, displaying immediately`);
         setModalImageLoading(false);
-        setModalImageProgress(100);
         setModalImageError(false);
       } else {
         // キャッシュにない場合はローディング状態を設定
         console.log(`⏳ Photo ${newPhoto.number} not cached, starting load`);
         setModalImageLoading(true);
-        setModalImageProgress(0);
         setModalImageError(false);
         
         // タイムアウトを設定して、読み込みが完了しない場合のフォールバック
@@ -496,13 +492,11 @@ export const PhotoSelectPage: React.FC = () => {
         // キャッシュにある場合はローディング状態を設定しない
         console.log(`✅ Photo ${newPhoto.number} is cached, displaying immediately`);
         setModalImageLoading(false);
-        setModalImageProgress(100);
         setModalImageError(false);
       } else {
         // キャッシュにない場合はローディング状態を設定
         console.log(`⏳ Photo ${newPhoto.number} not cached, starting load`);
         setModalImageLoading(true);
-        setModalImageProgress(0);
         setModalImageError(false);
         
         // タイムアウトを設定して、読み込みが完了しない場合のフォールバック
@@ -781,87 +775,12 @@ export const PhotoSelectPage: React.FC = () => {
               }}
             >
               {/* 常に最前面に表示される閉じるボタンと写真番号 */}
-              {/* ヘッダー部分：写真番号、再読み込みボタン、閉じるボタンを一列に配置 */}
+              {/* ヘッダー部分：写真番号と閉じるボタンを一列に配置 */}
               <div className="absolute top-4 left-0 right-0 flex items-center justify-between px-4 z-50">
                 {/* 写真番号（左寄せ） */}
                 <div className="bg-black bg-opacity-70 text-white px-3 py-1 rounded-full text-sm font-medium">
                   {currentModalIndex + 1} / {photos.length}
                 </div>
-
-                {/* 再読み込みボタン（中央寄せ） */}
-                <button
-                  onClick={() => {
-                    console.log('🔄 Manual reload requested for photo:', modalPhoto?.number);
-                    console.log('🔄 Current modalImageKey:', modalImageKey);
-                    
-                    // 状態を完全にリセット
-                    setModalImageError(false);
-                    setModalImageLoading(true);
-                    setModalImageProgress(0);
-                    
-                    // キャッシュを完全にクリア（複数のパターンでクリア）
-                    if (modalPhoto) {
-                      const highResUrl = getHighResUrl(modalPhoto.storageUrl);
-                      const baseCacheKey = `${highResUrl}|写真 ${modalPhoto.number}`;
-                      const imageCache = (window as any).imageCache;
-                      
-                      if (imageCache) {
-                        // 基本のキャッシュキーを削除
-                        imageCache.delete(baseCacheKey);
-                        console.log('🗑️ Cache cleared for base key:', baseCacheKey);
-                        
-                        // タイムスタンプ付きのキャッシュキーも削除（念のため）
-                        const timestampedUrl = `${highResUrl}?t=${Date.now()}`;
-                        const timestampedCacheKey = `${timestampedUrl}|写真 ${modalPhoto.number}`;
-                        imageCache.delete(timestampedCacheKey);
-                        console.log('🗑️ Cache cleared for timestamped key:', timestampedCacheKey);
-                        
-                        // Safari用：古いキャッシュもクリア
-                        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-                        if (isSafari) {
-                          console.log('🧹 Safari: Clearing all related cache entries');
-                          // 同じ写真番号のキャッシュを全て削除
-                          for (const [key] of imageCache.entries()) {
-                            if (key.includes(`写真 ${modalPhoto.number}`)) {
-                              imageCache.delete(key);
-                              console.log('🗑️ Safari: Cleared related cache:', key);
-                            }
-                          }
-                        }
-                        
-                        console.log('📊 Cache size after clear:', imageCache.size);
-                      }
-                    }
-                    
-                    // 強制的に画像を再読み込み（keyを変更してコンポーネントを再マウント）
-                    const newKey = modalImageKey + 1;
-                    setModalImageKey(newKey);
-                    console.log('🔄 Reload triggered, key updated to:', newKey);
-                    
-                    // Safari用：強制メモリクリーンアップ
-                    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-                    if (isSafari && (window as any).forceSafariCleanup) {
-                      console.log('🧹 Safari: Force cleanup triggered');
-                      (window as any).forceSafariCleanup();
-                    }
-                  }}
-                  className="bg-gray-400 bg-opacity-70 text-white rounded-full w-10 h-10 flex items-center justify-center hover:bg-opacity-90 transition-all"
-                  title="再読み込み"
-                >
-                  <svg 
-                    className="w-5 h-5" 
-                    fill="none" 
-                    stroke="currentColor" 
-                    viewBox="0 0 24 24"
-                  >
-                    <path 
-                      strokeLinecap="round" 
-                      strokeLinejoin="round" 
-                      strokeWidth={2} 
-                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" 
-                    />
-                  </svg>
-                </button>
 
                 {/* 閉じるボタン（右寄せ） */}
                 <button
@@ -874,18 +793,8 @@ export const PhotoSelectPage: React.FC = () => {
 
               {/* ローディング表示 */}
               {modalImageLoading && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center bg-white bg-opacity-80 backdrop-blur-sm z-20">
-                  <div className="bg-white rounded-lg p-6 text-center shadow-lg border border-gray-200">
-                    <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4"></div>
-                    <p className="text-lg font-medium text-gray-800 mb-2">画像を読み込み中...</p>
-                    <div className="w-64 bg-gray-200 rounded-full h-2 mb-2">
-                      <div 
-                        className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                        style={{ width: `${modalImageProgress}%` }}
-                      ></div>
-                    </div>
-                    <p className="text-sm text-gray-600">{modalImageProgress}%</p>
-                  </div>
+                <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-80 backdrop-blur-sm z-20">
+                  <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
                 </div>
               )}
               
@@ -904,7 +813,6 @@ export const PhotoSelectPage: React.FC = () => {
                         // 再試行時もWatermarkedImageに任せるため、状態のリセットのみ
                         setModalImageError(false);
                         setModalImageLoading(true);
-                        setModalImageProgress(0);
                       }}
                       className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
                     >
@@ -929,7 +837,6 @@ export const PhotoSelectPage: React.FC = () => {
                 onLoadComplete={() => {
                   console.log('🎉 onLoadComplete called for photo:', modalPhoto?.number, 'index:', currentModalIndex);
                   setModalImageLoading(false);
-                  setModalImageProgress(100);
                   setModalImageError(false);
                   console.log('✅ Modal loading state cleared');
                   // 画像読み込み完了後にプリロードを開始
