@@ -9,7 +9,7 @@ interface CachedImage {
 // グローバル画像キャッシュ（メモリ内）
 const imageCache = new Map<string, CachedImage>();
 const CACHE_EXPIRY_TIME = 60 * 60 * 1000; // 60分でキャッシュ期限切れ
-const MAX_CACHE_SIZE = 100; // 最大100枚までキャッシュ（Safari対応）
+const MAX_CACHE_SIZE = 20; // Safari用に大幅削減：最大20枚までキャッシュ
 
 // キャッシュ管理関数
 const cleanupExpiredCache = () => {
@@ -69,20 +69,20 @@ const checkMemoryPressure = () => {
   if (isSafari && isMobile) {
     const currentSize = imageCache.size;
     
-    // 段階的なメモリ管理（固定制限ではなく動的）
-    if (currentSize > MAX_CACHE_SIZE * 0.9) { // 90%で緊急クリーンアップ
-      console.log('🚨 Safari: Emergency cache cleanup');
+    // Safari用：より積極的なメモリ管理（20枚制限に合わせて調整）
+    if (currentSize > MAX_CACHE_SIZE * 0.8) { // 80%で緊急クリーンアップ（16枚で発動）
+      console.log('🚨 Safari: Emergency cache cleanup (80% threshold)');
       cleanupOldCache();
       
       // 強制ガベージコレクション
       if (window.gc) {
         window.gc();
       }
-    } else if (currentSize > MAX_CACHE_SIZE * 0.7) { // 70%で中程度のクリーンアップ
-      console.log('⚠️ Safari: Moderate cache cleanup');
+    } else if (currentSize > MAX_CACHE_SIZE * 0.6) { // 60%で中程度のクリーンアップ（12枚で発動）
+      console.log('⚠️ Safari: Moderate cache cleanup (60% threshold)');
       const entries = Array.from(imageCache.entries());
       entries.sort((a, b) => a[1].timestamp - b[1].timestamp);
-      const toDelete = entries.slice(0, Math.floor(entries.length * 0.4)); // 40%削除（古い画像から）
+      const toDelete = entries.slice(0, Math.floor(entries.length * 0.5)); // 50%削除（古い画像から）
       
       toDelete.forEach(([key]) => {
         const cachedImage = imageCache.get(key);
@@ -98,11 +98,11 @@ const checkMemoryPressure = () => {
       console.log(`🧹 Safari: Moderate cleanup removed ${toDelete.length} OLD images, current size: ${imageCache.size}`);
       console.log(`🧹 Safari deleted keys:`, toDelete.map(([key]) => key));
       console.log(`🧹 Safari deleted timestamps:`, toDelete.map(([key, value]) => ({ key, timestamp: new Date(value.timestamp).toLocaleString() })));
-    } else if (currentSize > MAX_CACHE_SIZE * 0.5) { // 50%で軽いクリーンアップ
-      console.log('🧹 Safari: Light cache cleanup');
+    } else if (currentSize > MAX_CACHE_SIZE * 0.4) { // 40%で軽いクリーンアップ（8枚で発動）
+      console.log('🧹 Safari: Light cache cleanup (40% threshold)');
       const entries = Array.from(imageCache.entries());
       entries.sort((a, b) => a[1].timestamp - b[1].timestamp);
-      const toDelete = entries.slice(0, Math.floor(entries.length * 0.2)); // 20%のみ削除（古い画像から）
+      const toDelete = entries.slice(0, Math.floor(entries.length * 0.3)); // 30%のみ削除（古い画像から）
       
       toDelete.forEach(([key]) => {
         const cachedImage = imageCache.get(key);
@@ -180,9 +180,9 @@ const preloadImage = (src: string, alt: string, fallbackSrc?: string) => {
 
   console.log('🔄 Starting preload for:', cacheKey, 'src:', src);
 
-  // iOS Safari用のCanvas制限値（プリロード用）
-  const MAX_CANVAS_DIMENSION = 2048;
-  const MAX_CANVAS_AREA = 2048 * 2048;
+  // iOS Safari用のCanvas制限値（プリロード用）- メモリ制限を考慮して削減
+  const MAX_CANVAS_DIMENSION = 1024; // 2048から1024に削減
+  const MAX_CANVAS_AREA = 1024 * 1024; // 約1MB/画像に削減
 
   // Canvas サイズを制限内に調整（プリロード用）
   const getOptimalCanvasSize = (imgWidth: number, imgHeight: number) => {
@@ -435,9 +435,9 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
   const [currentSrc, setCurrentSrc] = useState(src);
   const [currentImageId, setCurrentImageId] = useState(imageId);
 
-  // iOS Safari用のCanvas制限値
-  const MAX_CANVAS_DIMENSION = 2048;
-  const MAX_CANVAS_AREA = 2048 * 2048;
+  // iOS Safari用のCanvas制限値 - メモリ制限を考慮して削減
+  const MAX_CANVAS_DIMENSION = 1024; // 2048から1024に削減
+  const MAX_CANVAS_AREA = 1024 * 1024; // 約1MB/画像に削減
 
   // Canvas サイズを制限内に調整
   const getOptimalCanvasSize = (imgWidth: number, imgHeight: number) => {
@@ -572,6 +572,28 @@ export const WatermarkedImage: React.FC<WatermarkedImageProps> = ({
     if (!cached) {
       console.log('🚫 Image was deleted from cache, loading fresh from storage:', imageSrc);
       console.log('💡 This might be due to memory cleanup - loading fresh image');
+      
+      // Safari用：メモリ不足時の特別処理
+      if (isSafari && isMobile) {
+        console.log('🍎 Safari: Memory pressure detected, using aggressive cleanup');
+        // より積極的にキャッシュをクリア
+        const entries = Array.from(imageCache.entries());
+        if (entries.length > 5) { // 5枚以下に強制削減
+          entries.sort((a, b) => a[1].timestamp - b[1].timestamp);
+          const toDelete = entries.slice(0, entries.length - 5);
+          toDelete.forEach(([key]) => {
+            const cachedImage = imageCache.get(key);
+            if (cachedImage) {
+              const ctx = cachedImage.canvas.getContext('2d');
+              if (ctx) {
+                ctx.clearRect(0, 0, cachedImage.canvas.width, cachedImage.canvas.height);
+              }
+            }
+            imageCache.delete(key);
+          });
+          console.log(`🧹 Safari: Aggressive cleanup removed ${toDelete.length} images, current size: ${imageCache.size}`);
+        }
+      }
     }
 
     // キャッシュがない場合は直接Storageから読み込み（キャッシュ保存なし）

@@ -294,19 +294,21 @@ export const PhotoSelectPage: React.FC = () => {
     let preloadCount = 5; // デフォルト
     
     if (isSafari && isMobile) {
-      // キャッシュサイズに応じてプリロード数を動的調整
+      // キャッシュサイズに応じてプリロード数を動的調整（20枚制限に合わせて調整）
       const imageCache = (window as any).imageCache;
       if (imageCache) {
         const cacheSize = imageCache.size;
-        if (cacheSize > 80) {
-          preloadCount = 1; // メモリ不足時は最小限
-        } else if (cacheSize > 60) {
+        if (cacheSize > 16) { // 80% of 20
+          preloadCount = 0; // メモリ不足時はプリロード停止
+        } else if (cacheSize > 12) { // 60% of 20
+          preloadCount = 1; // 最小限
+        } else if (cacheSize > 8) { // 40% of 20
           preloadCount = 2; // 中程度の制限
         } else {
           preloadCount = 3; // 通常時
         }
       } else {
-        preloadCount = 3; // フォールバック
+        preloadCount = 2; // フォールバック（より保守的に）
       }
     }
     
