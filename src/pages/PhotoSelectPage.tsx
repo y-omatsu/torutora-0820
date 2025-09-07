@@ -275,17 +275,18 @@ export const PhotoSelectPage: React.FC = () => {
     return false;
   }, []);
 
-  // 画像プリロード関数（前後2枚ずつ）
+  // 画像プリロード関数（プラス5枚のみ）
   const preloadAdjacentImages = useCallback((currentIndex: number) => {
     console.log(`🚀 Starting preload for index ${currentIndex}, total photos: ${photos.length}`);
     const preloadPromises: Promise<void>[] = [];
     
-    // 前後2枚ずつプリロード（モーダル用の高解像度画像）
+    // プラス5枚のみプリロード（モーダル用の高解像度画像）
     const indicesToPreload = [
-      currentIndex - 2, // 前の前の画像
-      currentIndex - 1, // 前の画像
       currentIndex + 1, // 次の画像
-      currentIndex + 2  // 次の次の画像
+      currentIndex + 2, // 次の次の画像
+      currentIndex + 3, // 次の次の次の画像
+      currentIndex + 4, // 次の次の次の次の画像
+      currentIndex + 5  // 次の次の次の次の次の画像
     ].filter(i => i >= 0 && i < photos.length); // 範囲内のインデックスのみ
     
     console.log(`📋 Indices to preload:`, indicesToPreload);
@@ -433,10 +434,11 @@ export const PhotoSelectPage: React.FC = () => {
         console.log('Modal photo:', modalPhoto?.number);
         
         const indicesToPreload = [
-          currentModalIndex - 2,
-          currentModalIndex - 1,
           currentModalIndex + 1,
-          currentModalIndex + 2
+          currentModalIndex + 2,
+          currentModalIndex + 3,
+          currentModalIndex + 4,
+          currentModalIndex + 5
         ].filter(i => i >= 0 && i < photos.length);
         
         console.log('Should preload indices:', indicesToPreload);
@@ -663,15 +665,49 @@ export const PhotoSelectPage: React.FC = () => {
               }}
             >
               {/* 常に最前面に表示される閉じるボタンと写真番号 */}
-              <button
-                onClick={() => setModalPhoto(null)}
-                className="absolute top-4 right-4 bg-black bg-opacity-70 text-white rounded-full w-10 h-10 flex items-center justify-center hover:bg-opacity-90 transition-all text-lg font-bold z-50"
-              >
-                ×
-              </button>
+              {/* ヘッダー部分：写真番号、再読み込みボタン、閉じるボタンを一列に配置 */}
+              <div className="absolute top-4 left-0 right-0 flex items-center justify-between px-4 z-50">
+                {/* 写真番号（左寄せ） */}
+                <div className="bg-black bg-opacity-70 text-white px-3 py-1 rounded-full text-sm font-medium">
+                  {currentModalIndex + 1} / {photos.length}
+                </div>
 
-              <div className="absolute top-4 left-4 bg-black bg-opacity-70 text-white px-3 py-1 rounded-full text-sm font-medium z-50">
-                {currentModalIndex + 1} / {photos.length}
+                {/* 再読み込みボタン（中央寄せ） */}
+                <button
+                  onClick={() => {
+                    console.log('🔄 Manual reload requested for photo:', modalPhoto?.number);
+                    setModalImageError(false);
+                    setModalImageLoading(true);
+                    setModalImageProgress(0);
+                    // 強制的に画像を再読み込み
+                    const img = new Image();
+                    img.src = getHighResUrl(modalPhoto!.storageUrl) + '?t=' + Date.now();
+                  }}
+                  className="bg-gray-400 bg-opacity-70 text-white rounded-full w-10 h-10 flex items-center justify-center hover:bg-opacity-90 transition-all"
+                  title="再読み込み"
+                >
+                  <svg 
+                    className="w-5 h-5" 
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                  >
+                    <path 
+                      strokeLinecap="round" 
+                      strokeLinejoin="round" 
+                      strokeWidth={2} 
+                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" 
+                    />
+                  </svg>
+                </button>
+
+                {/* 閉じるボタン（右寄せ） */}
+                <button
+                  onClick={() => setModalPhoto(null)}
+                  className="bg-black bg-opacity-70 text-white rounded-full w-10 h-10 flex items-center justify-center hover:bg-opacity-90 transition-all text-lg font-bold"
+                >
+                  ×
+                </button>
               </div>
 
               {/* ローディング表示 */}
