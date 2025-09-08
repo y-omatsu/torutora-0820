@@ -86,18 +86,35 @@ export const GalleryPage: React.FC = () => {
 
   const downloadImage = async (url: string, filename: string) => {
     try {
+      console.log(`Fetching image: ${url}`);
       const response = await fetch(url);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
       const blob = await response.blob();
+      console.log(`Blob created: ${blob.size} bytes for ${filename}`);
+      
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = downloadUrl;
       link.download = filename;
+      link.style.display = 'none';
+      
       document.body.appendChild(link);
       link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(downloadUrl);
+      
+      // 少し待ってからクリーンアップ
+      setTimeout(() => {
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(downloadUrl);
+      }, 100);
+      
+      console.log(`Download triggered for: ${filename}`);
     } catch (error) {
       console.error('Download failed:', error);
+      throw error; // エラーを再スローして上位で処理
     }
   };
 
@@ -142,19 +159,29 @@ export const GalleryPage: React.FC = () => {
     
     for (const photo of selectedPhotoList) {
       try {
-        await downloadImage(photo.storageUrl, `photo_${photo.number}.jpg`);
+        console.log(`Downloading photo ${photo.number}...`);
+        await downloadImage(photo.storageUrl, `photo_${String(photo.number).padStart(3, '0')}.jpg`);
         completed++;
         setDownloadProgress((completed / selectedPhotoList.length) * 100);
+        
+        // 各ダウンロードの間に少し間隔を設ける（ブラウザの制限対策）
+        if (completed < selectedPhotoList.length) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
       } catch (error) {
-        console.error('Download failed for photo:', photo.number);
+        console.error('Download failed for photo:', photo.number, error);
+        completed++; // エラーでもカウントして進捗を更新
+        setDownloadProgress((completed / selectedPhotoList.length) * 100);
       }
     }
+    
+    console.log(`Bulk download completed: ${completed}/${selectedPhotoList.length} photos`);
     
     setTimeout(() => {
       setDownloading(false);
       setShowDownloadComplete(true);
       setDownloadProgress(0);
-    }, 500);
+    }, 1000);
   };
 
   return (
