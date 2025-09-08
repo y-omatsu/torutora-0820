@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { usePhotoGallery } from '../hooks/usePhotoGallery';
 import { PhotoSearchInfo, GalleryPhoto } from '../types/Gallery';
+import JSZip from 'jszip';
 
 export const GalleryPage: React.FC = () => {
   const { loading, photos, searchGalleryPhotos } = usePhotoGallery();
@@ -155,33 +156,78 @@ export const GalleryPage: React.FC = () => {
     setDownloadProgress(0);
     
     const selectedPhotoList = photos.filter(photo => selectedPhotos.has(photo.id));
-    let completed = 0;
+    const zip = new JSZip();
     
-    for (const photo of selectedPhotoList) {
-      try {
-        console.log(`Downloading photo ${photo.number}...`);
-        await downloadImage(photo.storageUrl, `photo_${String(photo.number).padStart(3, '0')}.jpg`);
-        completed++;
-        setDownloadProgress((completed / selectedPhotoList.length) * 100);
-        
-        // 各ダウンロードの間に少し間隔を設ける（ブラウザの制限対策）
-        if (completed < selectedPhotoList.length) {
-          await new Promise(resolve => setTimeout(resolve, 500));
+    try {
+      console.log(`Starting ZIP download for ${selectedPhotoList.length} photos...`);
+      
+      // 各写真をZIPに追加
+      for (let i = 0; i < selectedPhotoList.length; i++) {
+        const photo = selectedPhotoList[i];
+        try {
+          console.log(`Fetching photo ${photo.number} (${i + 1}/${selectedPhotoList.length})...`);
+          
+          const response = await fetch(photo.storageUrl);
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          
+          const blob = await response.blob();
+          const filename = `photo_${String(photo.number).padStart(3, '0')}.jpg`;
+          
+          // ZIPにファイルを追加
+          zip.file(filename, blob);
+          
+          // 進捗を更新
+          const progress = ((i + 1) / selectedPhotoList.length) * 100;
+          setDownloadProgress(progress);
+          
+          console.log(`Added ${filename} to ZIP (${progress.toFixed(1)}%)`);
+        } catch (error) {
+          console.error(`Failed to fetch photo ${photo.number}:`, error);
+          // エラーでも進捗を更新
+          const progress = ((i + 1) / selectedPhotoList.length) * 100;
+          setDownloadProgress(progress);
         }
-      } catch (error) {
-        console.error('Download failed for photo:', photo.number, error);
-        completed++; // エラーでもカウントして進捗を更新
-        setDownloadProgress((completed / selectedPhotoList.length) * 100);
       }
+      
+      console.log('Generating ZIP file...');
+      setDownloadProgress(95); // ZIP生成中
+      
+      // ZIPファイルを生成
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      
+      console.log(`ZIP file generated: ${zipBlob.size} bytes`);
+      setDownloadProgress(100);
+      
+      // ZIPファイルをダウンロード
+      const downloadUrl = window.URL.createObjectURL(zipBlob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = `photos_${selectedPhotoList.length}枚.zip`;
+      link.style.display = 'none';
+      
+      document.body.appendChild(link);
+      link.click();
+      
+      // クリーンアップ
+      setTimeout(() => {
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(downloadUrl);
+      }, 100);
+      
+      console.log('ZIP download completed successfully');
+      
+    } catch (error) {
+      console.error('ZIP download failed:', error);
+      alert('ZIPファイルの作成に失敗しました。');
+    } finally {
+      setTimeout(() => {
+        setDownloading(false);
+        setShowDownloadComplete(true);
+        setDownloadProgress(0);
+      }, 1000);
     }
-    
-    console.log(`Bulk download completed: ${completed}/${selectedPhotoList.length} photos`);
-    
-    setTimeout(() => {
-      setDownloading(false);
-      setShowDownloadComplete(true);
-      setDownloadProgress(0);
-    }, 1000);
   };
 
   return (
@@ -366,7 +412,7 @@ export const GalleryPage: React.FC = () => {
                       : 'bg-blue-600 hover:bg-blue-700'
                   }`}
                 >
-                  選択した写真をダウンロード ({selectedPhotos.size}枚)
+                  選択した写真をZIPでダウンロード ({selectedPhotos.size}枚)
                 </button>
 
                 <label className="flex items-center space-x-3 cursor-pointer">
