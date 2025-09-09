@@ -69,7 +69,7 @@ const isMobile = () => {
 const getHighResUrl = (url: string): string => {
   if (url.includes('firebasestorage.googleapis.com')) {
     // プリロードと表示で同じURLを生成するため、固定値を使用
-    const quality = 5; // 固定品質
+    const quality = 20; // 固定品質
     const width = 200; // 固定幅
     return url.includes('?') ? `${url}&quality=${quality}&w=${width}` : `${url}?quality=${quality}&w=${width}`;
   }
